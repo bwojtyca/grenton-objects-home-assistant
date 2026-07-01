@@ -30,7 +30,7 @@ from .const import (
     LIGHT_GRENTON_TYPE_BRIGHTNESS
 )
 from .api import get_api_client, GrentonApiError
-from .mixins import GrentonPollingMixin, is_within_debounce, build_device_info
+from .mixins import GrentonPollingMixin, is_within_debounce
 import logging
 from homeassistant.components.light import (
     LightEntity,
@@ -77,7 +77,6 @@ class GrentonLight(GrentonPollingMixin, LightEntity):
         self._update_interval = update_interval
         self._unsub_interval = None
         self._initialized = False
-        self._attr_device_info = build_device_info(grenton_id, api_endpoint)
 
         grenton_id_part_0, grenton_id_part_1 = self._grenton_id.split('->')
         

@@ -57,8 +57,3 @@ async def test_device_class_exposed():
 async def test_device_class_defaults_to_none():
     obj = create_obj()
     assert obj.device_class is None
-
-def test_device_info_grouped_by_clu():
-    obj = create_obj(grenton_id="CLU220000000->DIN0000")
-    ids = obj._attr_device_info["identifiers"]
-    assert ("grenton_objects", "CLU220000000") in ids

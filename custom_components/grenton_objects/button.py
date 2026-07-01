@@ -17,7 +17,6 @@ from .const import (
     CONF_OBJECT_NAME
 )
 from .api import get_api_client, GrentonApiError
-from .mixins import build_device_info
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -37,7 +36,6 @@ class GrentonScript(ButtonEntity):
         self._grenton_id = grenton_id
         self._unique_id = f"grenton_{grenton_id.split('->')[1] if '->' in grenton_id else grenton_id}"
         self._api_client = api_client
-        self._attr_device_info = build_device_info(grenton_id, api_endpoint)
         
 
     @property
