@@ -4,7 +4,7 @@ from homeassistant.const import STATE_ON, STATE_OFF
 from tests.helpers import MockApiClient, MockHass
 
 
-def create_obj(grenton_id="CLU220000000->DIN0000", response_data=None, captured_command=None):
+def create_obj(grenton_id="CLU220000000->DIN0000", device_class=None, response_data=None, captured_command=None):
     if response_data is None:
         response_data = {"status": 1}
     api_client = MockApiClient(response_data=response_data, captured_command=captured_command)
@@ -12,6 +12,7 @@ def create_obj(grenton_id="CLU220000000->DIN0000", response_data=None, captured_
         api_endpoint="http://fake-api",
         grenton_id=grenton_id,
         object_name="Test Sensor",
+        device_class=device_class,
         auto_update=False,
         update_interval=5,
         api_client=api_client
@@ -47,3 +48,17 @@ async def test_async_update_off():
     assert obj._state == STATE_OFF
     assert obj.is_on is False
     assert obj.unique_id == "grenton_DIN0000"
+@pytest.mark.asyncio
+async def test_device_class_exposed():
+    obj = create_obj(device_class="motion")
+    assert obj.device_class == "motion"
+
+@pytest.mark.asyncio
+async def test_device_class_defaults_to_none():
+    obj = create_obj()
+    assert obj.device_class is None
+
+def test_device_info_grouped_by_clu():
+    obj = create_obj(grenton_id="CLU220000000->DIN0000")
+    ids = obj._attr_device_info["identifiers"]
+    assert ("grenton_objects", "CLU220000000") in ids

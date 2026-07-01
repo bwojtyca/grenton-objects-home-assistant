@@ -78,6 +78,7 @@
           "name": "Nazwa obiektu",
           "api_endpoint": "Adres URL do Grenton HTTP Listener",
           "grenton_id": "ID obiektu Grenton",
+          "device_class": "Klasa urządzenia (opcjonalnie)",
           "auto_update": "Automatyczna aktualizacja obiektu",
           "update_interval": "Okres odświeżania (w sekundach)"
         }
@@ -196,6 +197,38 @@
         "measurement": "Pomiar chwilowy (np. aktualna temperatura)",
         "total": "Sumaryczna wartość (np. miesięczne zużycie energii)",
         "total_increasing": "Sumaryczna wartość, tylko rosnąca (np. licznik energii)"
+      }
+    },
+    "binary_sensor_device_class": {
+      "options": {
+        "battery": "Bateria",
+        "battery_charging": "Ładowanie baterii",
+        "carbon_monoxide": "Tlenek węgla",
+        "cold": "Zimno",
+        "connectivity": "Łączność",
+        "door": "Drzwi",
+        "garage_door": "Brama garażowa",
+        "gas": "Gaz",
+        "heat": "Ciepło",
+        "light": "Światło",
+        "lock": "Zamek",
+        "moisture": "Wilgoć",
+        "motion": "Ruch",
+        "moving": "W ruchu",
+        "occupancy": "Obecność",
+        "opening": "Otwarcie",
+        "plug": "Zasilanie (wtyczka)",
+        "power": "Zasilanie",
+        "presence": "Obecność (present)",
+        "problem": "Problem",
+        "running": "Działanie",
+        "safety": "Bezpieczeństwo",
+        "smoke": "Dym",
+        "sound": "Dźwięk",
+        "tamper": "Sabotaż",
+        "update": "Aktualizacja",
+        "vibration": "Wibracja",
+        "window": "Okno"
       }
     }
   }

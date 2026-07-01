@@ -17,12 +17,10 @@ from .const import (
     DOMAIN
 )
 from .api import get_api_client, GrentonApiError
-from .mixins import GrentonPollingMixin, is_within_debounce
+from .mixins import GrentonPollingMixin, is_within_debounce, build_device_info
 import logging
-import voluptuous as vol
 from homeassistant.components.climate import (
     ClimateEntity,
-    PLATFORM_SCHEMA,
     HVACMode,
     ClimateEntityFeature
 )
@@ -30,12 +28,6 @@ from homeassistant.const import UnitOfTemperature
 from homeassistant.exceptions import HomeAssistantError
 
 _LOGGER = logging.getLogger(__name__)
-
-PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
-    vol.Required(CONF_API_ENDPOINT): str,
-    vol.Required(CONF_GRENTON_ID): str,
-    vol.Optional(CONF_OBJECT_NAME, default='Grenton Thermostat'): str
-})
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
     api_endpoint = config_entry.options.get(CONF_API_ENDPOINT, config_entry.data.get(CONF_API_ENDPOINT))
@@ -77,6 +69,7 @@ class GrentonClimate(GrentonPollingMixin, ClimateEntity):
         self._unsub_interval = None
         self._initialized = False
         self._api_client = api_client
+        self._attr_device_info = build_device_info(grenton_id, api_endpoint)
 
     async def async_force_therm_state(self, state: int, direction: int):
         self._hvac_mode = HVACMode.OFF if state == 0 else (HVACMode.COOL if direction == 1 else HVACMode.HEAT)

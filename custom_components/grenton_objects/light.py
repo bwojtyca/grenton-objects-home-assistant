@@ -30,12 +30,10 @@ from .const import (
     LIGHT_GRENTON_TYPE_BRIGHTNESS
 )
 from .api import get_api_client, GrentonApiError
-from .mixins import GrentonPollingMixin, is_within_debounce
+from .mixins import GrentonPollingMixin, is_within_debounce, build_device_info
 import logging
-import voluptuous as vol
 from homeassistant.components.light import (
-    LightEntity, 
-    PLATFORM_SCHEMA, 
+    LightEntity,
     ColorMode
 )
 from homeassistant.const import (STATE_ON, STATE_OFF)
@@ -43,13 +41,6 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util import color as color_util
 
 _LOGGER = logging.getLogger(__name__)
-
-PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
-    vol.Required(CONF_API_ENDPOINT): str,
-    vol.Required(CONF_GRENTON_ID): str,
-    vol.Required(CONF_GRENTON_TYPE, default=CONF_GRENTON_TYPE_DOUT): str, #DOUT, DALI, DIMMER, RGB, RGBW, LED_R, LED_G, LED_B, LED_W
-    vol.Optional(CONF_OBJECT_NAME, default='Grenton Light'): str
-})
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
     api_endpoint = config_entry.options.get(CONF_API_ENDPOINT, config_entry.data.get(CONF_API_ENDPOINT))
@@ -86,7 +77,8 @@ class GrentonLight(GrentonPollingMixin, LightEntity):
         self._update_interval = update_interval
         self._unsub_interval = None
         self._initialized = False
-        
+        self._attr_device_info = build_device_info(grenton_id, api_endpoint)
+
         grenton_id_part_0, grenton_id_part_1 = self._grenton_id.split('->')
         
         if self._grenton_type in LIGHT_GRENTON_TYPE_LED:

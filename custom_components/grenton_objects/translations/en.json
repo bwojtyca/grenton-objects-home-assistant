@@ -78,6 +78,7 @@
           "name": "Object Name",
           "api_endpoint": "URL to Grenton HTTP Listener",
           "grenton_id": "Grenton Object ID",
+          "device_class": "Device Class (optional)",
           "auto_update": "Automatic Object Updates",
           "update_interval": "Refresh Interval (in seconds)"
         }
@@ -196,6 +197,38 @@
         "measurement": "Measurement (e.g., current temperature)",
         "total": "Total (e.g., monthly energy consumption)",
         "total_increasing": "Total Increasing (e.g., energy meter or odometer)"
+      }
+    },
+    "binary_sensor_device_class": {
+      "options": {
+        "battery": "Battery",
+        "battery_charging": "Battery Charging",
+        "carbon_monoxide": "Carbon Monoxide",
+        "cold": "Cold",
+        "connectivity": "Connectivity",
+        "door": "Door",
+        "garage_door": "Garage Door",
+        "gas": "Gas",
+        "heat": "Heat",
+        "light": "Light",
+        "lock": "Lock",
+        "moisture": "Moisture",
+        "motion": "Motion",
+        "moving": "Moving",
+        "occupancy": "Occupancy",
+        "opening": "Opening",
+        "plug": "Plug",
+        "power": "Power",
+        "presence": "Presence",
+        "problem": "Problem",
+        "running": "Running",
+        "safety": "Safety",
+        "smoke": "Smoke",
+        "sound": "Sound",
+        "tamper": "Tamper",
+        "update": "Update",
+        "vibration": "Vibration",
+        "window": "Window"
       }
     }
   }

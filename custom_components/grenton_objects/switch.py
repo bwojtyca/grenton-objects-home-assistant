@@ -18,24 +18,16 @@ from .const import (
     DOMAIN
 )
 from .api import get_api_client, GrentonApiError
-from .mixins import GrentonPollingMixin, is_within_debounce
+from .mixins import GrentonPollingMixin, is_within_debounce, build_device_info
 
 import logging
-import voluptuous as vol
 from homeassistant.components.switch import (
-    SwitchEntity,
-    PLATFORM_SCHEMA
+    SwitchEntity
 )
 from homeassistant.const import (STATE_ON, STATE_OFF)
 from homeassistant.exceptions import HomeAssistantError
 
 _LOGGER = logging.getLogger(__name__)
-
-PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
-    vol.Required(CONF_API_ENDPOINT): str,
-    vol.Required(CONF_GRENTON_ID): str,
-    vol.Optional(CONF_OBJECT_NAME, default='Grenton Switch'): str
-})
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
     api_endpoint = config_entry.options.get(CONF_API_ENDPOINT, config_entry.data.get(CONF_API_ENDPOINT))
@@ -66,6 +58,7 @@ class GrentonSwitch(GrentonPollingMixin, SwitchEntity):
         self._unsub_interval = None
         self._initialized = False
         self._api_client = api_client
+        self._attr_device_info = build_device_info(grenton_id, api_endpoint)
 
     async def async_force_state(self, state: int):
         self._state = STATE_ON if state == 1 else STATE_OFF
