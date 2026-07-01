@@ -234,5 +234,7 @@ class GrentonSensor(GrentonPollingMixin, SensorEntity):
                 self._native_value = value
             self.async_write_ha_state()
         except (aiohttp.ClientError, GrentonApiError) as ex:
-            _LOGGER.error("Failed to update the sensor value: %s", ex)
-            self._native_value = None
+            # Transient gate failure (e.g. timeout under load). Keep the last
+            # known value instead of flipping to Unknown, so a single failed
+            # poll doesn't blank the sensor; it recovers on the next good read.
+            _LOGGER.warning("Failed to update the sensor value (keeping last value): %s", ex)

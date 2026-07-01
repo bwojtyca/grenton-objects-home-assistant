@@ -19,6 +19,17 @@ _LOGGER = logging.getLogger(__name__)
 # from HA group actions with zero perceptible delay for single commands.
 DEFAULT_BATCH_WINDOW = 0.0
 
+# The Grenton HTTP Gate is a single-threaded embedded device that can drop or
+# time out requests when hit concurrently (the same reason command batching
+# exists). Serialize every request to a given gate so bursts — e.g. all sensors
+# polling at once right after a Home Assistant restart — queue instead of
+# overwhelming it.
+MAX_CONCURRENT_REQUESTS = 1
+
+# Per-request timeout (seconds). Prevents a single stuck request from blocking
+# the serialized queue indefinitely.
+DEFAULT_REQUEST_TIMEOUT = 15.0
+
 
 class GrentonApiError(Exception):
     """Normalized exception for non-aiohttp errors surfaced by the API client."""
@@ -51,6 +62,11 @@ class GrentonApiClient:
         self._pending_commands: list[tuple[str, asyncio.Future]] = []
         self._batch_lock = asyncio.Lock()
         self._batch_task: asyncio.Task | None = None
+
+        # Serialize traffic to the (fragile, single-threaded) gate and bound
+        # each request so a stuck one cannot block the queue forever.
+        self._request_semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
+        self._timeout = aiohttp.ClientTimeout(total=DEFAULT_REQUEST_TIMEOUT)
 
     @property
     def endpoint(self) -> str:
@@ -100,9 +116,10 @@ class GrentonApiClient:
         """
         session = self._get_session()
         try:
-            async with session.get(self._endpoint, json=query) as response:
-                response.raise_for_status()
-                return await response.json()
+            async with self._request_semaphore:
+                async with session.get(self._endpoint, json=query, timeout=self._timeout) as response:
+                    response.raise_for_status()
+                    return await response.json()
         except aiohttp.ClientError:
             raise
         except Exception as ex:
@@ -154,9 +171,10 @@ class GrentonApiClient:
             # Send the single merged request
             try:
                 session = self._get_session()
-                async with session.post(self._endpoint, json=payload) as response:
-                    response.raise_for_status()
-                    data = await response.json()
+                async with self._request_semaphore:
+                    async with session.post(self._endpoint, json=payload, timeout=self._timeout) as response:
+                        response.raise_for_status()
+                        data = await response.json()
 
                 # Resolve all futures - the Grenton script returns results keyed
                 # the same way we sent them
