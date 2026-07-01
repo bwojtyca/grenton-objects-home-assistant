@@ -27,6 +27,7 @@ from homeassistant.components.switch import (
     PLATFORM_SCHEMA
 )
 from homeassistant.const import (STATE_ON, STATE_OFF)
+from homeassistant.exceptions import HomeAssistantError
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -96,7 +97,7 @@ class GrentonSwitch(GrentonPollingMixin, SwitchEntity):
             
             await self._api_client.send_command(command)
         except (aiohttp.ClientError, GrentonApiError) as ex:
-            _LOGGER.error("Failed to turn on the switch: %s", ex)
+            raise HomeAssistantError(f"Failed to turn on the switch: {ex}") from ex
 
     async def async_turn_off(self, **kwargs):
         try:
@@ -108,7 +109,7 @@ class GrentonSwitch(GrentonPollingMixin, SwitchEntity):
             
             await self._api_client.send_command(command)
         except (aiohttp.ClientError, GrentonApiError) as ex:
-            _LOGGER.error("Failed to turn off the switch: %s", ex)
+            raise HomeAssistantError(f"Failed to turn off the switch: {ex}") from ex
 
     async def async_update(self):
         if not self._initialized:

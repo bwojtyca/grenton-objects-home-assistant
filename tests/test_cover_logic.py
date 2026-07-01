@@ -1,6 +1,7 @@
 import pytest
 from custom_components.grenton_objects.cover import GrentonCover
 from homeassistant.const import (
+    STATE_CLOSED,
     STATE_CLOSING,
     STATE_OPEN,
     STATE_OPENING
@@ -59,8 +60,11 @@ async def test_async_close_cover():
 
 @pytest.mark.asyncio
 async def test_async_stop_cover():
+    # Stopping a partially-open cover should report OPEN (derived from position),
+    # not blindly assume open regardless of where it is.
     captured_command = {}
     obj = create_obj(response_data={"status": "ok"}, captured_command=captured_command)
+    obj._current_cover_position = 50
     await obj.async_stop_cover()
 
     assert captured_command["value"] == {
@@ -69,6 +73,14 @@ async def test_async_stop_cover():
     assert obj._state == STATE_OPEN
     assert obj._last_command_time == 123.456
     assert obj.unique_id == "grenton_ROL0000"
+
+@pytest.mark.asyncio
+async def test_async_stop_cover_at_closed_position():
+    # Stopping at position 0 should report CLOSED, not OPEN (the previous bug).
+    obj = create_obj(response_data={"status": "ok"})
+    obj._current_cover_position = 0
+    await obj.async_stop_cover()
+    assert obj._state == STATE_CLOSED
 
 @pytest.mark.asyncio
 async def test_async_set_cover_position():

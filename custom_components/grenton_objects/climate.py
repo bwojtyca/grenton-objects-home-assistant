@@ -27,6 +27,7 @@ from homeassistant.components.climate import (
     ClimateEntityFeature
 )
 from homeassistant.const import UnitOfTemperature
+from homeassistant.exceptions import HomeAssistantError
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -65,7 +66,11 @@ class GrentonClimate(GrentonPollingMixin, ClimateEntity):
         self._hvac_modes = [HVACMode.OFF, HVACMode.HEAT, HVACMode.COOL]
         self._unique_id = f"grenton_{grenton_id.split('->')[1]}"
         self._temperature_unit = UnitOfTemperature.CELSIUS
-        self._supported_features = ClimateEntityFeature.TARGET_TEMPERATURE
+        self._supported_features = (
+            ClimateEntityFeature.TARGET_TEMPERATURE
+            | ClimateEntityFeature.TURN_ON
+            | ClimateEntityFeature.TURN_OFF
+        )
         self._last_command_time = None
         self._auto_update = auto_update
         self._update_interval = update_interval
@@ -134,7 +139,13 @@ class GrentonClimate(GrentonPollingMixin, ClimateEntity):
             
             await self._api_client.send_command(command)
         except (aiohttp.ClientError, GrentonApiError) as ex:
-            _LOGGER.error("Failed to set the climate temperature: %s", ex)
+            raise HomeAssistantError(f"Failed to set the climate temperature: {ex}") from ex
+
+    async def async_turn_on(self):
+        await self.async_set_hvac_mode(HVACMode.HEAT)
+
+    async def async_turn_off(self):
+        await self.async_set_hvac_mode(HVACMode.OFF)
 
     async def async_set_hvac_mode(self, hvac_mode):
         try:
@@ -152,7 +163,7 @@ class GrentonClimate(GrentonPollingMixin, ClimateEntity):
             
             await self._api_client.send_command(command)
         except (aiohttp.ClientError, GrentonApiError) as ex:
-            _LOGGER.error("Failed to set the climate hvac_mode: %s", ex)
+            raise HomeAssistantError(f"Failed to set the climate hvac_mode: {ex}") from ex
         
 
     async def async_update(self):
