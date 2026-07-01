@@ -10,6 +10,7 @@ Repository: https://github.com/jnalepka/grenton-objects-home-assistant
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers.typing import ConfigType
+from homeassistant.helpers.device_registry import DeviceEntry
 from .const import DOMAIN, CONF_API_ENDPOINT
 from homeassistant.exceptions import ServiceValidationError
 import voluptuous as vol
@@ -226,6 +227,19 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
 async def async_update_options(hass: HomeAssistant, entry: ConfigEntry):
     await hass.config_entries.async_reload(entry.entry_id)
+
+
+async def async_remove_config_entry_device(
+    hass: HomeAssistant, config_entry: ConfigEntry, device_entry: DeviceEntry
+) -> bool:
+    """Allow deleting a device from the UI.
+
+    Enables removing stale devices (e.g. the per-CLU devices created by the
+    short-lived device grouping in v3.6.0). Returning True lets Home Assistant
+    remove the device; entities are not deleted — any that still reference it
+    just have their device link cleared.
+    """
+    return True
 
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     config_entry.async_on_unload(
