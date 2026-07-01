@@ -3,7 +3,7 @@ from custom_components.grenton_objects.sensor import GrentonSensor
 from tests.helpers import MockApiClient, MockHass
 
 
-def create_obj(grenton_id="CLU220000000->DIN0000", grenton_type = "DEFAULT_SENSOR", unit_of_measurement = "°C", device_class = "temperature", state_class = "measurement", response_data=None, captured_command=None):
+def create_obj(grenton_id="CLU220000000->DIN0000", grenton_type = "DEFAULT_SENSOR", unit_of_measurement = "°C", device_class = "temperature", state_class = "measurement", min_value=None, max_value=None, response_data=None, captured_command=None):
     if response_data is None:
         response_data = {"status": 1}
     api_client = MockApiClient(response_data=response_data, captured_command=captured_command)
@@ -15,6 +15,8 @@ def create_obj(grenton_id="CLU220000000->DIN0000", grenton_type = "DEFAULT_SENSO
         unit_of_measurement = unit_of_measurement,
         device_class = device_class,
         state_class = state_class,
+        min_value = min_value,
+        max_value = max_value,
         auto_update=False,
         update_interval=5,
         api_client=api_client
@@ -174,3 +176,71 @@ async def test_async_update_modbus_slave_rtu():
     assert obj.device_class == "volatile_organic_compounds_parts"
     assert obj.state_class == "measurement"
     assert obj.unique_id == "grenton_MOD0000"
+
+# --- Min/max value range filtering ---
+
+@pytest.mark.asyncio
+async def test_async_update_in_range_accepted():
+    obj = create_obj(grenton_id="CLU220000000->PAN0000", min_value=-50, max_value=100, response_data={"status": 21.4})
+    await obj.async_update()
+    assert obj.native_value == 21.4
+
+@pytest.mark.asyncio
+async def test_async_update_below_min_rejected():
+    # Grenton temperature sensor glitch: -255 reported with min=-50
+    obj = create_obj(grenton_id="CLU220000000->PAN0000", min_value=-50, max_value=100, response_data={"status": -255})
+    await obj.async_update()
+    assert obj.native_value is None
+
+@pytest.mark.asyncio
+async def test_async_update_above_max_rejected():
+    obj = create_obj(grenton_id="CLU220000000->PAN0000", min_value=-50, max_value=100, response_data={"status": 999})
+    await obj.async_update()
+    assert obj.native_value is None
+
+@pytest.mark.asyncio
+async def test_async_update_rejected_keeps_previous_value_none():
+    # Reading a good value, then a glitch -> state falls back to Unknown (None)
+    obj = create_obj(grenton_id="CLU220000000->PAN0000", min_value=-50, max_value=100, response_data={"status": 22.0})
+    await obj.async_update()
+    assert obj.native_value == 22.0
+    obj._api_client._response_data = {"status": -255}
+    await obj.async_update()
+    assert obj.native_value is None
+
+@pytest.mark.asyncio
+async def test_async_update_only_min_bound():
+    obj = create_obj(grenton_id="CLU220000000->PAN0000", min_value=0, max_value=None, response_data={"status": -1})
+    await obj.async_update()
+    assert obj.native_value is None
+    obj._api_client._response_data = {"status": 5}
+    await obj.async_update()
+    assert obj.native_value == 5
+
+@pytest.mark.asyncio
+async def test_async_update_only_max_bound():
+    obj = create_obj(grenton_id="CLU220000000->PAN0000", min_value=None, max_value=50, response_data={"status": 80})
+    await obj.async_update()
+    assert obj.native_value is None
+
+@pytest.mark.asyncio
+async def test_async_update_boundary_values_inclusive():
+    obj = create_obj(grenton_id="CLU220000000->PAN0000", min_value=-50, max_value=100, response_data={"status": -50})
+    await obj.async_update()
+    assert obj.native_value == -50
+    obj._api_client._response_data = {"status": 100}
+    await obj.async_update()
+    assert obj.native_value == 100
+
+@pytest.mark.asyncio
+async def test_async_update_no_bounds_accepts_extreme():
+    obj = create_obj(grenton_id="CLU220000000->PAN0000", min_value=None, max_value=None, response_data={"status": -255})
+    await obj.async_update()
+    assert obj.native_value == -255
+
+@pytest.mark.asyncio
+async def test_async_update_non_numeric_value_not_filtered():
+    # A text status with bounds set must not be rejected by numeric range check
+    obj = create_obj(grenton_id="CLU220000000->PAN0000", min_value=0, max_value=100, response_data={"status": "OPEN"})
+    await obj.async_update()
+    assert obj.native_value == "OPEN"
