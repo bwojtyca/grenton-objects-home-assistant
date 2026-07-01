@@ -17,7 +17,6 @@ from .const import (
     CONF_STATE_CLASS,
     CONF_MIN_VALUE,
     CONF_MAX_VALUE,
-    CONF_UNIT_OF_MEASUREMENT,
     CONF_GRENTON_TYPE_DEFAULT_SENSOR,
     CONF_GRENTON_TYPE_MODBUS_RTU,
     CONF_GRENTON_TYPE_MODBUS_VALUE,
@@ -33,27 +32,14 @@ from .const import (
     DOMAIN
 )
 from .api import get_api_client, GrentonApiError
-from .mixins import GrentonPollingMixin
+from .mixins import GrentonPollingMixin, build_device_info
 import logging
-import voluptuous as vol
 import re
 from homeassistant.components.sensor import (
-    SensorEntity,
-    PLATFORM_SCHEMA
+    SensorEntity
 )
-from homeassistant.const import UnitOfTemperature
 
 _LOGGER = logging.getLogger(__name__)
-
-PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
-    vol.Required(CONF_API_ENDPOINT): str,
-    vol.Required(CONF_GRENTON_ID): str,
-    vol.Required(CONF_GRENTON_TYPE, default=CONF_GRENTON_TYPE_DEFAULT_SENSOR): str, #DEFAULT_SENSOR, MODBUS_RTU, MODBUS_VALUE, MODBUS, MODBUS_CLIENT, MODBUS_SLAVE_RTU
-    vol.Required(CONF_UNIT_OF_MEASUREMENT, default=UnitOfTemperature.CELSIUS): str,
-    vol.Optional(CONF_OBJECT_NAME, default='Grenton Sensor'): str,
-    vol.Optional(CONF_DEVICE_CLASS, default=''): str,
-    vol.Optional(CONF_STATE_CLASS, default=''): str #measurement, total, total_increasing
-})
 
 DEFAULT_UNITS = {
     'apparent_power': 'VA',
@@ -142,6 +128,7 @@ class GrentonSensor(GrentonPollingMixin, SensorEntity):
         self._unsub_interval = None
         self._initialized = False
         self._api_client = api_client
+        self._attr_device_info = build_device_info(grenton_id, api_endpoint)
 
         if self._grenton_type == CONF_GRENTON_TYPE_RELAY_POWER:
             self._unique_id = f"grenton_{grenton_id.split('->')[1]}_POWER"

@@ -20,12 +20,10 @@ from .const import (
     CONF_DEVICE_CLASS
 )
 from .api import get_api_client, GrentonApiError
-from .mixins import GrentonPollingMixin, is_within_debounce
+from .mixins import GrentonPollingMixin, is_within_debounce, build_device_info
 import logging
-import voluptuous as vol
 from homeassistant.components.cover import (
     CoverEntity,
-    PLATFORM_SCHEMA,
     CoverDeviceClass,
     CoverEntityFeature
 )
@@ -38,14 +36,6 @@ from homeassistant.const import (
 from homeassistant.exceptions import HomeAssistantError
 
 _LOGGER = logging.getLogger(__name__)
-
-PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
-    vol.Required(CONF_API_ENDPOINT): str,
-    vol.Required(CONF_GRENTON_ID): str,
-    vol.Required(CONF_REVERSED, default=False): bool,
-    vol.Optional(CONF_OBJECT_NAME, default='Grenton Cover'): str,
-    vol.Optional(CONF_DEVICE_CLASS, default=''): str,
-})
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
     api_endpoint = config_entry.options.get(CONF_API_ENDPOINT, config_entry.data.get(CONF_API_ENDPOINT))
@@ -82,6 +72,7 @@ class GrentonCover(GrentonPollingMixin, CoverEntity):
         self._unsub_interval = None
         self._initialized = False
         self._api_client = api_client
+        self._attr_device_info = build_device_info(grenton_id, api_endpoint)
 
     async def async_force_cover(self, state: int, position: int, lamel: int):
         if self._reversed:

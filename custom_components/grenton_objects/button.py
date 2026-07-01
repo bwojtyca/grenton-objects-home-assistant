@@ -9,7 +9,6 @@ Repository: https://github.com/jnalepka/grenton-objects-home-assistant
 
 import aiohttp
 import logging
-import voluptuous as vol
 from homeassistant.components.button import ButtonEntity
 from homeassistant.exceptions import HomeAssistantError
 from .const import (
@@ -18,14 +17,9 @@ from .const import (
     CONF_OBJECT_NAME
 )
 from .api import get_api_client, GrentonApiError
+from .mixins import build_device_info
 
 _LOGGER = logging.getLogger(__name__)
-
-PLATFORM_SCHEMA = vol.Schema({
-    vol.Required(CONF_API_ENDPOINT): str,
-    vol.Required(CONF_GRENTON_ID): str,
-    vol.Optional(CONF_OBJECT_NAME, default='Grenton Script'): str
-})
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
     api_endpoint = config_entry.options.get(CONF_API_ENDPOINT, config_entry.data.get(CONF_API_ENDPOINT))
@@ -43,6 +37,7 @@ class GrentonScript(ButtonEntity):
         self._grenton_id = grenton_id
         self._unique_id = f"grenton_{grenton_id.split('->')[1] if '->' in grenton_id else grenton_id}"
         self._api_client = api_client
+        self._attr_device_info = build_device_info(grenton_id, api_endpoint)
         
 
     @property

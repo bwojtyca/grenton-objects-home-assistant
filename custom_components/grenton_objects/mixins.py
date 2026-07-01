@@ -2,11 +2,34 @@
 
 import logging
 from datetime import timedelta
+from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.event import async_track_time_interval
 
-from .const import COMMAND_DEBOUNCE_SECONDS, GATE_FAILURE_THRESHOLD
+from .const import COMMAND_DEBOUNCE_SECONDS, GATE_FAILURE_THRESHOLD, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def build_device_info(grenton_id: str, api_endpoint: str) -> DeviceInfo:
+    """Build device registry info for a Grenton entity.
+
+    Entities are grouped by their CLU (the part before "->" in the Grenton
+    id), so all objects on the same controller appear under one device.
+    Objects without a CLU prefix (gate-level user features / scripts) fall
+    back to a single device representing the HTTP gate.
+    """
+    if grenton_id and "->" in grenton_id:
+        clu = grenton_id.split("->")[0]
+        return DeviceInfo(
+            identifiers={(DOMAIN, clu)},
+            name=f"Grenton {clu}",
+            manufacturer="Grenton",
+        )
+    return DeviceInfo(
+        identifiers={(DOMAIN, api_endpoint)},
+        name="Grenton Gate",
+        manufacturer="Grenton",
+    )
 
 
 def is_within_debounce(last_command_time, hass) -> bool:

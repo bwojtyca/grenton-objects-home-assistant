@@ -23,6 +23,7 @@ from .const import (
     CONF_MAX_VALUE
 )
 from homeassistant.components.cover import CoverDeviceClass
+from homeassistant.components.binary_sensor import BinarySensorDeviceClass
 from homeassistant.helpers.selector import SelectSelector, SelectSelectorConfig
 
 
@@ -75,6 +76,16 @@ class GrentonOptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Optional(CONF_MIN_VALUE, description={"suggested_value": default_min}): vol.Coerce(float),
                 vol.Optional(CONF_MAX_VALUE, description={"suggested_value": default_max}): vol.Coerce(float)
             })
+        elif device_type == "binary_sensor":
+            default_device_class = self.config_entry.options.get(CONF_DEVICE_CLASS, self.config_entry.data.get(CONF_DEVICE_CLASS))
+            data_schema = data_schema.extend({
+                vol.Optional(CONF_DEVICE_CLASS, description={"suggested_value": default_device_class}): SelectSelector(
+                    SelectSelectorConfig(
+                        options=[dc.value for dc in BinarySensorDeviceClass],
+                        translation_key="binary_sensor_device_class"
+                    )
+                )
+            })
 
         if device_type == "climate":
             data_schema = data_schema.extend({
@@ -99,6 +110,9 @@ class GrentonOptionsFlowHandler(config_entries.OptionsFlow):
                     # falling back to the originally configured value.
                     user_input[CONF_MIN_VALUE] = min_value
                     user_input[CONF_MAX_VALUE] = max_value
+                elif device_type == "binary_sensor":
+                    # Same rationale: persist explicitly so clearing removes it.
+                    user_input[CONF_DEVICE_CLASS] = user_input.get(CONF_DEVICE_CLASS)
                 return self.async_create_entry(title="", data=user_input)
 
         return self.async_show_form(
