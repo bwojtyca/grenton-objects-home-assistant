@@ -40,6 +40,7 @@ CONF_AUTO_UPDATE = 'auto_update'
 CONF_UPDATE_INTERVAL = "update_interval"
 DEFAULT_UPDATE_INTERVAL = 30  # sekundy
 COMMAND_DEBOUNCE_SECONDS = 2  # ignore poll results this many seconds after a command
+GATE_FAILURE_THRESHOLD = 3  # consecutive failed polls before an entity is marked unavailable
 
 DEVICE_TYPE_OPTIONS = [
     "light",

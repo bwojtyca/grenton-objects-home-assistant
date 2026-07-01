@@ -223,6 +223,7 @@ class GrentonSensor(GrentonPollingMixin, SensorEntity):
                 command = {"status": f"return {self._grenton_id.split('->')[0]}:execute(0, 'getVar(\"{self._grenton_id.split('->')[1]}\")')"}
             
             data = await self._api_client.get_status(command)
+            self._handle_update_success()
             value = data.get("status")
             if not self._is_value_in_range(value):
                 _LOGGER.warning(
@@ -235,6 +236,6 @@ class GrentonSensor(GrentonPollingMixin, SensorEntity):
             self.async_write_ha_state()
         except (aiohttp.ClientError, GrentonApiError) as ex:
             # Transient gate failure (e.g. timeout under load). Keep the last
-            # known value instead of flipping to Unknown, so a single failed
-            # poll doesn't blank the sensor; it recovers on the next good read.
-            _LOGGER.warning("Failed to update the sensor value (keeping last value): %s", ex)
+            # known value instead of flipping to Unknown; after repeated
+            # failures the entity is marked unavailable (handled by the mixin).
+            self._handle_update_failure(ex)
