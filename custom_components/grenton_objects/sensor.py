@@ -32,7 +32,7 @@ from .const import (
     DOMAIN
 )
 from .api import get_api_client, GrentonApiError
-from .mixins import GrentonPollingMixin, build_device_info
+from .mixins import GrentonPollingMixin
 import logging
 import re
 from homeassistant.components.sensor import (
@@ -128,7 +128,6 @@ class GrentonSensor(GrentonPollingMixin, SensorEntity):
         self._unsub_interval = None
         self._initialized = False
         self._api_client = api_client
-        self._attr_device_info = build_device_info(grenton_id, api_endpoint)
 
         if self._grenton_type == CONF_GRENTON_TYPE_RELAY_POWER:
             self._unique_id = f"grenton_{grenton_id.split('->')[1]}_POWER"

@@ -17,7 +17,7 @@ from .const import (
     DOMAIN
 )
 from .api import get_api_client, GrentonApiError
-from .mixins import GrentonPollingMixin, is_within_debounce, build_device_info
+from .mixins import GrentonPollingMixin, is_within_debounce
 import logging
 from homeassistant.components.climate import (
     ClimateEntity,
@@ -69,7 +69,6 @@ class GrentonClimate(GrentonPollingMixin, ClimateEntity):
         self._unsub_interval = None
         self._initialized = False
         self._api_client = api_client
-        self._attr_device_info = build_device_info(grenton_id, api_endpoint)
 
     async def async_force_therm_state(self, state: int, direction: int):
         self._hvac_mode = HVACMode.OFF if state == 0 else (HVACMode.COOL if direction == 1 else HVACMode.HEAT)

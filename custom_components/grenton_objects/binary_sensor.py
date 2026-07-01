@@ -19,7 +19,7 @@ from .const import (
     DOMAIN
 )
 from .api import get_api_client, GrentonApiError
-from .mixins import GrentonPollingMixin, build_device_info
+from .mixins import GrentonPollingMixin
 import logging
 from homeassistant.components.binary_sensor import (
     BinarySensorEntity
@@ -58,7 +58,6 @@ class GrentonBinarySensor(GrentonPollingMixin, BinarySensorEntity):
         self._unsub_interval = None
         self._initialized = False
         self._api_client = api_client
-        self._attr_device_info = build_device_info(grenton_id, api_endpoint)
 
     async def async_force_state(self, state: int):
         self._state = STATE_ON if state == 1 else STATE_OFF
