@@ -35,6 +35,7 @@ from homeassistant.const import (
     STATE_OPEN,
     STATE_OPENING
 )
+from homeassistant.exceptions import HomeAssistantError
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -160,7 +161,7 @@ class GrentonCover(GrentonPollingMixin, CoverEntity):
             
             await self._api_client.send_command(command)
         except (aiohttp.ClientError, GrentonApiError) as ex:
-            _LOGGER.error("Failed to open the cover: %s", ex)
+            raise HomeAssistantError(f"Failed to open the cover: {ex}") from ex
 
     async def async_close_cover(self, **kwargs):
         try:
@@ -172,19 +173,22 @@ class GrentonCover(GrentonPollingMixin, CoverEntity):
             
             await self._api_client.send_command(command)
         except (aiohttp.ClientError, GrentonApiError) as ex:
-            _LOGGER.error("Failed to close the cover: %s", ex)
+            raise HomeAssistantError(f"Failed to close the cover: {ex}") from ex
 
     async def async_stop_cover(self, **kwargs):
         try:
             grenton_id_part_0, grenton_id_part_1 = self._grenton_id.split('->')
             command = {"command": f"{grenton_id_part_0}:execute(0, '{grenton_id_part_1}:execute(3, 0)')"}
-            self._state = STATE_OPEN
+            # Don't assume open on stop — derive from the last known position.
+            # The next poll settles the exact state; this avoids briefly showing
+            # a near-closed blind as "Open".
+            self._state = STATE_CLOSED if self._current_cover_position == 0 else STATE_OPEN
             self._last_command_time = self.hass.loop.time() if self.hass is not None else None
             self.async_write_ha_state()
-            
+
             await self._api_client.send_command(command)
         except (aiohttp.ClientError, GrentonApiError) as ex:
-            _LOGGER.error("Failed to stop the cover: %s", ex)
+            raise HomeAssistantError(f"Failed to stop the cover: {ex}") from ex
 
     async def async_set_cover_position(self, **kwargs):
         try:
@@ -212,7 +216,7 @@ class GrentonCover(GrentonPollingMixin, CoverEntity):
             
             await self._api_client.send_command(command)
         except (aiohttp.ClientError, GrentonApiError) as ex:
-            _LOGGER.error("Failed to set the cover position: %s", ex)
+            raise HomeAssistantError(f"Failed to set the cover position: {ex}") from ex
 
     async def async_set_cover_tilt_position(self, **kwargs):
         try:
@@ -226,7 +230,7 @@ class GrentonCover(GrentonPollingMixin, CoverEntity):
             
             await self._api_client.send_command(command)
         except (aiohttp.ClientError, GrentonApiError) as ex:
-            _LOGGER.error("Failed to set the cover tilt position: %s", ex)
+            raise HomeAssistantError(f"Failed to set the cover tilt position: {ex}") from ex
 
     async def async_open_cover_tilt(self, **kwargs):
         try:
@@ -237,7 +241,7 @@ class GrentonCover(GrentonPollingMixin, CoverEntity):
             
             await self._api_client.send_command(command)
         except (aiohttp.ClientError, GrentonApiError) as ex:
-            _LOGGER.error("Failed to open the cover tilt: %s", ex)
+            raise HomeAssistantError(f"Failed to open the cover tilt: {ex}") from ex
 
     async def async_close_cover_tilt(self, **kwargs):
         try:
@@ -248,7 +252,7 @@ class GrentonCover(GrentonPollingMixin, CoverEntity):
             
             await self._api_client.send_command(command)
         except (aiohttp.ClientError, GrentonApiError) as ex:
-            _LOGGER.error("Failed to close the cover tilt: %s", ex)
+            raise HomeAssistantError(f"Failed to close the cover tilt: {ex}") from ex
 
     async def async_update(self):
         if not self._initialized:

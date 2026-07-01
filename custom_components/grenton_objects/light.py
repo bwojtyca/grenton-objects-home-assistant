@@ -39,6 +39,7 @@ from homeassistant.components.light import (
     ColorMode
 )
 from homeassistant.const import (STATE_ON, STATE_OFF)
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util import color as color_util
 
 _LOGGER = logging.getLogger(__name__)
@@ -318,7 +319,7 @@ class GrentonLight(GrentonPollingMixin, LightEntity):
             
             await self._api_client.send_command(command)
         except (aiohttp.ClientError, GrentonApiError) as ex:
-            _LOGGER.error("Failed to turn on the light: %s", ex)
+            raise HomeAssistantError(f"Failed to turn on the light: {ex}") from ex
             
     async def async_turn_off(self, **kwargs):
         try:
@@ -358,7 +359,7 @@ class GrentonLight(GrentonPollingMixin, LightEntity):
             
             await self._api_client.send_command(command)
         except (aiohttp.ClientError, GrentonApiError) as ex:
-            _LOGGER.error("Failed to turn off the light: %s", ex)
+            raise HomeAssistantError(f"Failed to turn off the light: {ex}") from ex
 
     async def async_update(self):
         if not self._initialized:

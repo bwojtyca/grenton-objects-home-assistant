@@ -11,6 +11,7 @@ import aiohttp
 import logging
 import voluptuous as vol
 from homeassistant.components.button import ButtonEntity
+from homeassistant.exceptions import HomeAssistantError
 from .const import (
     CONF_API_ENDPOINT,
     CONF_GRENTON_ID,
@@ -66,4 +67,4 @@ class GrentonScript(ButtonEntity):
             await self._api_client.send_command(command)
             _LOGGER.info("Script %s executed successfully (Grenton).", self._object_name)
         except (aiohttp.ClientError, GrentonApiError) as ex:
-            _LOGGER.error("Failed to execute script %s: %s", self._object_name, ex)
+            raise HomeAssistantError(f"Failed to execute script {self._object_name}: {ex}") from ex
