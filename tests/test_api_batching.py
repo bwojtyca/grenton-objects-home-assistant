@@ -123,3 +123,53 @@ async def test_batch_window_coalesces_staggered_commands():
     assert mock_session.post.call_count == 1
     assert results[0] == {"command": "r1"}
     assert results[1] == {"command": "r2"}
+
+
+@pytest.mark.asyncio
+async def test_status_requests_are_serialized():
+    """Concurrent status reads must be serialized (max 1 in-flight) so the
+    single-threaded Grenton gate is never hit by a burst."""
+    concurrency = {"current": 0, "max": 0}
+
+    class _TrackingResponse:
+        async def __aenter__(self):
+            concurrency["current"] += 1
+            concurrency["max"] = max(concurrency["max"], concurrency["current"])
+            await asyncio.sleep(0.01)
+            return self
+
+        async def __aexit__(self, *args):
+            concurrency["current"] -= 1
+            return False
+
+        def raise_for_status(self):
+            pass
+
+        async def json(self):
+            return {"status": 1}
+
+    mock_session = MagicMock()
+    mock_session.get = MagicMock(side_effect=lambda *a, **k: _TrackingResponse())
+    client = GrentonApiClient("http://fake-gate", mock_session)
+
+    await asyncio.gather(*[client.get_status({"status": "x"}) for _ in range(6)])
+
+    assert concurrency["max"] == 1
+    assert mock_session.get.call_count == 6
+
+
+@pytest.mark.asyncio
+async def test_get_status_passes_timeout():
+    """Status requests should carry an explicit timeout."""
+    mock_response = AsyncMock()
+    mock_response.raise_for_status = MagicMock()
+    mock_response.json = AsyncMock(return_value={"status": 1})
+    mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+    mock_response.__aexit__ = AsyncMock(return_value=False)
+    mock_session = MagicMock()
+    mock_session.get = MagicMock(return_value=mock_response)
+
+    client = GrentonApiClient("http://fake-gate", mock_session)
+    await client.get_status({"status": "x"})
+
+    assert mock_session.get.call_args[1].get("timeout") is not None

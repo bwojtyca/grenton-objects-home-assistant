@@ -244,3 +244,19 @@ async def test_async_update_non_numeric_value_not_filtered():
     obj = create_obj(grenton_id="CLU220000000->PAN0000", min_value=0, max_value=100, response_data={"status": "OPEN"})
     await obj.async_update()
     assert obj.native_value == "OPEN"
+
+@pytest.mark.asyncio
+async def test_async_update_transient_error_keeps_last_value():
+    # A failed read (e.g. gate timeout) must retain the last good value,
+    # not blank the sensor to Unknown.
+    from custom_components.grenton_objects.api import GrentonApiError
+    obj = create_obj(grenton_id="CLU220000000->PAN0000", response_data={"status": 22.0})
+    await obj.async_update()
+    assert obj.native_value == 22.0
+
+    async def _raise(_query):
+        raise GrentonApiError("Connection timeout to host")
+    obj._api_client.get_status = _raise
+
+    await obj.async_update()
+    assert obj.native_value == 22.0
