@@ -15,6 +15,8 @@ from .const import (
     CONF_GRENTON_TYPE,
     CONF_DEVICE_CLASS,
     CONF_STATE_CLASS,
+    CONF_MIN_VALUE,
+    CONF_MAX_VALUE,
     CONF_UNIT_OF_MEASUREMENT,
     CONF_GRENTON_TYPE_DEFAULT_SENSOR,
     CONF_GRENTON_TYPE_MODBUS_RTU,
@@ -108,11 +110,13 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     device_class = config_entry.data.get(CONF_DEVICE_CLASS)
     unit_of_measurement = DEFAULT_UNITS.get(device_class, None)
     state_class = config_entry.data.get(CONF_STATE_CLASS)
+    min_value = config_entry.options.get(CONF_MIN_VALUE, config_entry.data.get(CONF_MIN_VALUE))
+    max_value = config_entry.options.get(CONF_MAX_VALUE, config_entry.data.get(CONF_MAX_VALUE))
     auto_update = config_entry.options.get(CONF_AUTO_UPDATE, config_entry.data.get(CONF_AUTO_UPDATE, True))
     update_interval = config_entry.options.get(CONF_UPDATE_INTERVAL, config_entry.data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL))
-    
+
     api_client = get_api_client(hass, api_endpoint)
-    entity = GrentonSensor(api_endpoint, grenton_id, grenton_type, object_name, unit_of_measurement, device_class, state_class, auto_update, update_interval, api_client)
+    entity = GrentonSensor(api_endpoint, grenton_id, grenton_type, object_name, unit_of_measurement, device_class, state_class, min_value, max_value, auto_update, update_interval, api_client)
     async_add_entities([entity], True)
 
     if DOMAIN not in hass.data:
@@ -122,7 +126,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     
     
 class GrentonSensor(GrentonPollingMixin, SensorEntity):
-    def __init__(self, api_endpoint, grenton_id, grenton_type, object_name, unit_of_measurement, device_class, state_class, auto_update, update_interval, api_client):
+    def __init__(self, api_endpoint, grenton_id, grenton_type, object_name, unit_of_measurement, device_class, state_class, min_value, max_value, auto_update, update_interval, api_client):
         self._api_endpoint = api_endpoint
         self._grenton_id = grenton_id
         self._grenton_type = grenton_type
@@ -131,6 +135,8 @@ class GrentonSensor(GrentonPollingMixin, SensorEntity):
         self._native_unit_of_measurement = unit_of_measurement
         self._device_class = device_class
         self._state_class = state_class
+        self._min_value = min_value
+        self._max_value = max_value
         self._auto_update = auto_update
         self._update_interval = update_interval
         self._unsub_interval = None
@@ -145,6 +151,25 @@ class GrentonSensor(GrentonPollingMixin, SensorEntity):
     async def async_force_value(self, value: float):
         self._native_value = value
         self.async_write_ha_state()
+
+    def _is_value_in_range(self, value) -> bool:
+        """Return True if the reading is within the configured min/max bounds.
+
+        Non-numeric readings and unset bounds are always accepted; only numeric
+        values that fall outside an explicitly configured limit are rejected.
+        """
+        if self._min_value is None and self._max_value is None:
+            return True
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            # Non-numeric sensor value (e.g. a text status); range filter N/A.
+            return True
+        if self._min_value is not None and numeric < self._min_value:
+            return False
+        if self._max_value is not None and numeric > self._max_value:
+            return False
+        return True
 
     @property
     def name(self):
@@ -198,7 +223,15 @@ class GrentonSensor(GrentonPollingMixin, SensorEntity):
                 command = {"status": f"return {self._grenton_id.split('->')[0]}:execute(0, 'getVar(\"{self._grenton_id.split('->')[1]}\")')"}
             
             data = await self._api_client.get_status(command)
-            self._native_value = data.get("status")
+            value = data.get("status")
+            if not self._is_value_in_range(value):
+                _LOGGER.warning(
+                    "Grenton sensor %s reported out-of-range value %s (allowed min=%s, max=%s); reporting Unknown",
+                    self._object_name, value, self._min_value, self._max_value
+                )
+                self._native_value = None
+            else:
+                self._native_value = value
             self.async_write_ha_state()
         except (aiohttp.ClientError, GrentonApiError) as ex:
             _LOGGER.error("Failed to update the sensor value: %s", ex)

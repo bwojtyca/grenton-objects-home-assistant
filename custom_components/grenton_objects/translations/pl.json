@@ -65,6 +65,8 @@
           "grenton_type": "Typ obiektu Grenton",
           "device_class": "Typ danych",
           "state_class": "Interpretacja danych w statystykach",
+          "min_value": "Minimalna prawidłowa wartość (opcjonalnie)",
+          "max_value": "Maksymalna prawidłowa wartość (opcjonalnie)",
           "auto_update": "Automatyczna aktualizacja obiektu",
           "update_interval": "Okres odświeżania (w sekundach)"
         }
@@ -93,6 +95,7 @@
     "error": {
       "min_value": "Wartość musi wynosić co najmniej {min}.",
       "max_value": "Wartość może wynosić maksymalnie {max}.",
+      "min_greater_than_max": "Wartość minimalna nie może być większa niż wartość maksymalna.",
       "duplicate_grenton_id": "Ten identyfikator Grenton jest już używany."
     }
   },
@@ -107,9 +110,14 @@
           "update_interval": "Okres odświeżania (w sekundach)",
           "reversed": "Odwrócony kierunek",
           "grenton_type": "Typ obiektu Grenton",
-          "device_class": "Klasa urządzenia"
+          "device_class": "Klasa urządzenia",
+          "min_value": "Minimalna prawidłowa wartość (opcjonalnie)",
+          "max_value": "Maksymalna prawidłowa wartość (opcjonalnie)"
         }
       }
+    },
+    "error": {
+      "min_greater_than_max": "Wartość minimalna nie może być większa niż wartość maksymalna."
     }
   },
   "selector": {

@@ -18,7 +18,9 @@ from .const import (
     CONF_GRENTON_TYPE,
     LIGHT_GRENTON_TYPE_OPTIONS,
     SENSOR_GRENTON_TYPE_OPTIONS,
-    CONF_DEVICE_CLASS
+    CONF_DEVICE_CLASS,
+    CONF_MIN_VALUE,
+    CONF_MAX_VALUE
 )
 from homeassistant.components.cover import CoverDeviceClass
 from homeassistant.helpers.selector import SelectSelector, SelectSelectorConfig
@@ -28,16 +30,13 @@ class GrentonOptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_init(self, user_input=None):
         device_type = self.config_entry.data.get("device_type", "")
 
-        if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
-
         default_endpoint = self.config_entry.options.get(
             CONF_API_ENDPOINT,
             self.config_entry.data.get(CONF_API_ENDPOINT)
         )
 
         default_auto_update = self.config_entry.options.get(
-            CONF_AUTO_UPDATE, 
+            CONF_AUTO_UPDATE,
             self.config_entry.data.get(CONF_AUTO_UPDATE, True)
         )
 
@@ -69,8 +68,12 @@ class GrentonOptionsFlowHandler(config_entries.OptionsFlow):
             })
         elif device_type == "sensor":
             default_type = self.config_entry.options.get(CONF_GRENTON_TYPE, self.config_entry.data.get(CONF_GRENTON_TYPE))
+            default_min = self.config_entry.options.get(CONF_MIN_VALUE, self.config_entry.data.get(CONF_MIN_VALUE))
+            default_max = self.config_entry.options.get(CONF_MAX_VALUE, self.config_entry.data.get(CONF_MAX_VALUE))
             data_schema = data_schema.extend({
-                vol.Required(CONF_GRENTON_TYPE, default=default_type): vol.In(SENSOR_GRENTON_TYPE_OPTIONS)
+                vol.Required(CONF_GRENTON_TYPE, default=default_type): vol.In(SENSOR_GRENTON_TYPE_OPTIONS),
+                vol.Optional(CONF_MIN_VALUE, description={"suggested_value": default_min}): vol.Coerce(float),
+                vol.Optional(CONF_MAX_VALUE, description={"suggested_value": default_max}): vol.Coerce(float)
             })
 
         if device_type == "climate":
@@ -83,9 +86,25 @@ class GrentonOptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Required(CONF_UPDATE_INTERVAL, default=default_update_interval): vol.All(vol.Coerce(int), vol.Range(min=5, max=3600))
             })
 
+        errors = {}
+        if user_input is not None:
+            min_value = user_input.get(CONF_MIN_VALUE)
+            max_value = user_input.get(CONF_MAX_VALUE)
+            if min_value is not None and max_value is not None and min_value > max_value:
+                errors["base"] = "min_greater_than_max"
+            else:
+                if device_type == "sensor":
+                    # Persist the bounds explicitly (as None when blank) so that
+                    # clearing a field actually removes the limit instead of
+                    # falling back to the originally configured value.
+                    user_input[CONF_MIN_VALUE] = min_value
+                    user_input[CONF_MAX_VALUE] = max_value
+                return self.async_create_entry(title="", data=user_input)
+
         return self.async_show_form(
-            step_id="init", 
-            data_schema=data_schema, 
+            step_id="init",
+            data_schema=data_schema,
+            errors=errors,
             description_placeholders={
                 "grenton_id": self.config_entry.data.get("grenton_id")
             }

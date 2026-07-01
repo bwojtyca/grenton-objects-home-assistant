@@ -65,6 +65,8 @@
           "grenton_type": "Grenton Object Type",
           "device_class": "Data Type",
           "state_class": "Data Interpretation in Statistics",
+          "min_value": "Minimum valid value (optional)",
+          "max_value": "Maximum valid value (optional)",
           "auto_update": "Automatic Object Updates",
           "update_interval": "Refresh Interval (in seconds)"
         }
@@ -93,6 +95,7 @@
     "error": {
       "min_value": "The value must be at least {min}.",
       "max_value": "The value can be at most {max}.",
+      "min_greater_than_max": "The minimum value cannot be greater than the maximum value.",
       "duplicate_grenton_id": "This Grenton Object ID is already used."
     }
   },
@@ -107,9 +110,14 @@
           "update_interval": "Refresh Interval (in seconds)",
           "reversed": "Reversed Direction",
           "grenton_type": "Grenton Object Type",
-          "device_class": "Device Class"
+          "device_class": "Device Class",
+          "min_value": "Minimum valid value (optional)",
+          "max_value": "Maximum valid value (optional)"
         }
       }
+    },
+    "error": {
+      "min_greater_than_max": "The minimum value cannot be greater than the maximum value."
     }
   },
   "selector": {

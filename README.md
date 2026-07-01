@@ -130,6 +130,18 @@ GATE_HTTP->HA_Integration_Listener->SendResponse()
 - Binary Sensor 0/1 – DIN / BINARY_SENSOR / ZWAVE
 - User Scripts
 
+### Sensor value limits (min/max)
+
+When adding or editing a **Sensor**, you can optionally define a **Minimum valid value** and/or a **Maximum valid value**.
+
+Some Grenton sensors occasionally report spurious readings (for example, a temperature sensor briefly returning `-255`). If a reading falls outside the configured range, it is treated as invalid: the sensor state becomes **Unknown** for that update instead of publishing the bad value. This keeps the outlier out of Home Assistant's long-term statistics and history graphs, and the sensor recovers automatically on the next valid reading.
+
+Notes:
+- Both fields are optional. Leave a field empty to leave that side unbounded (e.g. set only a minimum). Leaving both empty disables the check.
+- The bounds are inclusive — a reading exactly equal to the min or max is accepted.
+- Non-numeric sensor values (e.g. text statuses) are never filtered by this check.
+- Rejected readings are logged as a warning, so a persistently misbehaving sensor stays visible in the logs.
+
 ## 🔄 Auto updates
 
 The add-on automatically retrieves the status of objects from Grenton. This works well for a small number of objects (around 15) and when immediate state updates are not required.

@@ -21,6 +21,8 @@ from .const import (
     CONF_GRENTON_TYPE_RELAY_POWER,
     CONF_DEVICE_CLASS,
     CONF_STATE_CLASS,
+    CONF_MIN_VALUE,
+    CONF_MAX_VALUE,
     CONF_REVERSED,
     DEVICE_TYPE_OPTIONS,
     DEVICE_CLASS_OPTIONS,
@@ -212,6 +214,15 @@ class GrentonConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors={"base": "duplicate_grenton_id"}
             )
 
+        min_value = user_input.get(CONF_MIN_VALUE)
+        max_value = user_input.get(CONF_MAX_VALUE)
+        if min_value is not None and max_value is not None and min_value > max_value:
+            return self.async_show_form(
+                step_id="sensor_config",
+                data_schema=self._get_device_schema(user_input),
+                errors={"base": "min_greater_than_max"}
+            )
+
         self._persist_last_inputs(user_input)
 
         return self.async_create_entry(title=user_input[CONF_OBJECT_NAME], data={
@@ -222,6 +233,8 @@ class GrentonConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             CONF_GRENTON_TYPE: user_input[CONF_GRENTON_TYPE],
             CONF_DEVICE_CLASS: user_input[CONF_DEVICE_CLASS],
             CONF_STATE_CLASS: user_input[CONF_STATE_CLASS],
+            CONF_MIN_VALUE: min_value,
+            CONF_MAX_VALUE: max_value,
             CONF_AUTO_UPDATE: user_input[CONF_AUTO_UPDATE],
             CONF_UPDATE_INTERVAL: user_input[CONF_UPDATE_INTERVAL]
         })
@@ -337,6 +350,8 @@ class GrentonConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         translation_key="state_class"
                     )
                 ),
+                vol.Optional(CONF_MIN_VALUE, description={"suggested_value": defaults.get(CONF_MIN_VALUE)}): vol.Coerce(float),
+                vol.Optional(CONF_MAX_VALUE, description={"suggested_value": defaults.get(CONF_MAX_VALUE)}): vol.Coerce(float),
                 vol.Required(CONF_AUTO_UPDATE, default=defaults.get(CONF_AUTO_UPDATE, True)): bool,
                 vol.Required(CONF_UPDATE_INTERVAL, default=defaults.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)): vol.All(vol.Coerce(int), vol.Range(min=5, max=3600))
             })
