@@ -49,8 +49,10 @@ class GrentonApiClient:
       Single commands fire instantly with no perceptible delay.
     - >0: waits the specified seconds, collecting staggered commands.
 
-    The user configures batch_window per integration entry. Entities sharing
-    the same configuration/endpoint are batched together.
+    ``batch_window`` is an internal tuning value, not a user-facing setting;
+    it currently always uses the default. All entities sharing an endpoint
+    share a single client instance, so their commands batch together and, via
+    the request semaphore, every request to the gate is serialized.
     """
 
     def __init__(self, endpoint: str, session: aiohttp.ClientSession, batch_window: float = DEFAULT_BATCH_WINDOW) -> None:

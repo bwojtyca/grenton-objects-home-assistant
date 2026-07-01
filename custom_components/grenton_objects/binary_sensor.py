@@ -92,8 +92,8 @@ class GrentonBinarySensor(GrentonPollingMixin, BinarySensorEntity):
             grenton_id_part_0, grenton_id_part_1 = self._grenton_id.split('->')
             command = {"status": f"return {grenton_id_part_0}:execute(0, '{grenton_id_part_1}:get(0)')"}
             data = await self._api_client.get_status(command)
+            self._handle_update_success()
             self._state = STATE_OFF if data.get("status") == 0 else STATE_ON
             self.async_write_ha_state()
         except (aiohttp.ClientError, GrentonApiError) as ex:
-            _LOGGER.error("Failed to update the binary sensor state: %s", ex)
-            self._state = None
+            self._handle_update_failure(ex)

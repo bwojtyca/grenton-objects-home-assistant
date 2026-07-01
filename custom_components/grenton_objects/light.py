@@ -395,6 +395,7 @@ class GrentonLight(GrentonPollingMixin, LightEntity):
                 command.update(self._generate_get_command("status_3", grenton_id_part_0, grenton_id_part_1, "get", 15))
             
             data = await self._api_client.get_status(command)
+            self._handle_update_success()
 
             if is_within_debounce(self._last_command_time, self.hass):
                 return
@@ -443,8 +444,7 @@ class GrentonLight(GrentonPollingMixin, LightEntity):
             self.async_write_ha_state()
 
         except (aiohttp.ClientError, GrentonApiError) as ex:
-            _LOGGER.error("Failed to update the light state: %s", ex)
-            self._state = None
+            self._handle_update_failure(ex)
         except (AttributeError, TypeError, ValueError) as ex:
             _LOGGER.error("Unexpected data in light state response: %s", ex)
             self._state = None

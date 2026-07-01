@@ -272,6 +272,7 @@ class GrentonCover(GrentonPollingMixin, CoverEntity):
             else:
                 command.update({"status_3": f"return {grenton_id_part_0}:execute(0, '{grenton_id_part_1}:get(8)')"})
             data = await self._api_client.get_status(command)
+            self._handle_update_success()
 
             if is_within_debounce(self._last_command_time, self.hass):
                 return
@@ -292,5 +293,4 @@ class GrentonCover(GrentonPollingMixin, CoverEntity):
             self._current_cover_tilt_position = int((90 - angle) * 100 / 90)
             self.async_write_ha_state()
         except (aiohttp.ClientError, GrentonApiError) as ex:
-            _LOGGER.error("Failed to update the cover state: %s", ex)
-            self._state = None
+            self._handle_update_failure(ex)

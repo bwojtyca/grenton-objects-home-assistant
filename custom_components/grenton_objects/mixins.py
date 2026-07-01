@@ -1,9 +1,12 @@
 """Shared mixins for Grenton Objects entity classes."""
 
+import logging
 from datetime import timedelta
 from homeassistant.helpers.event import async_track_time_interval
 
-from .const import COMMAND_DEBOUNCE_SECONDS
+from .const import COMMAND_DEBOUNCE_SECONDS, GATE_FAILURE_THRESHOLD
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def is_within_debounce(last_command_time, hass) -> bool:
@@ -30,6 +33,7 @@ class GrentonPollingMixin:
 
     async def async_added_to_hass(self):
         self._initialized = True
+        self._consecutive_failures = 0
         if self._auto_update:
             self._unsub_interval = async_track_time_interval(
                 self.hass, self._update_callback, timedelta(seconds=self._update_interval)
@@ -42,3 +46,28 @@ class GrentonPollingMixin:
 
     async def _update_callback(self, now):
         await self.async_update()
+
+    def _handle_update_success(self) -> None:
+        """Record a successful poll: reset the failure count and restore availability."""
+        self._consecutive_failures = 0
+        if not getattr(self, "_attr_available", True):
+            self._attr_available = True
+
+    def _handle_update_failure(self, ex: Exception) -> None:
+        """Record a failed poll.
+
+        The last known state is intentionally kept (not blanked) so a single
+        failed read doesn't flicker the entity to Unknown. After
+        GATE_FAILURE_THRESHOLD consecutive failures the entity is marked
+        unavailable, which recovers automatically on the next successful poll.
+        """
+        self._consecutive_failures = getattr(self, "_consecutive_failures", 0) + 1
+        _LOGGER.warning(
+            "Failed to update %s (attempt %d, keeping last value): %s",
+            getattr(self, "_object_name", None) or getattr(self, "_name", "entity"),
+            self._consecutive_failures,
+            ex,
+        )
+        if self._consecutive_failures >= GATE_FAILURE_THRESHOLD and getattr(self, "_attr_available", True):
+            self._attr_available = False
+            self.async_write_ha_state()

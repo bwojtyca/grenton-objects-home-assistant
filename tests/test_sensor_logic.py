@@ -248,11 +248,12 @@ async def test_async_update_non_numeric_value_not_filtered():
 @pytest.mark.asyncio
 async def test_async_update_transient_error_keeps_last_value():
     # A failed read (e.g. gate timeout) must retain the last good value,
-    # not blank the sensor to Unknown.
+    # not blank the sensor to Unknown, and stay available for brief blips.
     from custom_components.grenton_objects.api import GrentonApiError
     obj = create_obj(grenton_id="CLU220000000->PAN0000", response_data={"status": 22.0})
     await obj.async_update()
     assert obj.native_value == 22.0
+    assert obj.available is True
 
     async def _raise(_query):
         raise GrentonApiError("Connection timeout to host")
@@ -260,3 +261,46 @@ async def test_async_update_transient_error_keeps_last_value():
 
     await obj.async_update()
     assert obj.native_value == 22.0
+    assert obj.available is True
+
+@pytest.mark.asyncio
+async def test_async_update_unavailable_after_consecutive_failures():
+    from custom_components.grenton_objects.api import GrentonApiError
+    from custom_components.grenton_objects.const import GATE_FAILURE_THRESHOLD
+    obj = create_obj(grenton_id="CLU220000000->PAN0000", response_data={"status": 22.0})
+    await obj.async_update()
+    assert obj.available is True
+
+    async def _raise(_query):
+        raise GrentonApiError("Connection timeout to host")
+    obj._api_client.get_status = _raise
+
+    for _ in range(GATE_FAILURE_THRESHOLD - 1):
+        await obj.async_update()
+        assert obj.available is True          # brief blips tolerated
+        assert obj.native_value == 22.0       # last value kept
+
+    await obj.async_update()                  # threshold reached
+    assert obj.available is False
+    assert obj.native_value == 22.0           # value still retained while unavailable
+
+@pytest.mark.asyncio
+async def test_async_update_recovers_after_failures():
+    from custom_components.grenton_objects.api import GrentonApiError
+    from custom_components.grenton_objects.const import GATE_FAILURE_THRESHOLD
+    obj = create_obj(grenton_id="CLU220000000->PAN0000", response_data={"status": 22.0})
+    await obj.async_update()
+
+    async def _raise(_query):
+        raise GrentonApiError("Connection timeout to host")
+    obj._api_client.get_status = _raise
+    for _ in range(GATE_FAILURE_THRESHOLD):
+        await obj.async_update()
+    assert obj.available is False
+
+    async def _ok(_query):
+        return {"status": 23.5}
+    obj._api_client.get_status = _ok
+    await obj.async_update()
+    assert obj.available is True               # recovers on next good read
+    assert obj.native_value == 23.5

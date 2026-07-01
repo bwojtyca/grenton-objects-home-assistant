@@ -169,6 +169,7 @@ class GrentonClimate(GrentonPollingMixin, ClimateEntity):
             command.update({"status_3": f"return {grenton_id_part_0}:execute(0, '{grenton_id_part_1}:get(12)')"})
             command.update({"status_4": f"return {grenton_id_part_0}:execute(0, '{grenton_id_part_1}:get(14)')"})
             data = await self._api_client.get_status(command)
+            self._handle_update_success()
 
             if is_within_debounce(self._last_command_time, self.hass):
                 return
@@ -178,4 +179,4 @@ class GrentonClimate(GrentonPollingMixin, ClimateEntity):
             self._current_temperature = data.get("status_4")
             self.async_write_ha_state()
         except (aiohttp.ClientError, GrentonApiError) as ex:
-            _LOGGER.error("Failed to update the climate state: %s", ex)
+            self._handle_update_failure(ex)
