@@ -68,7 +68,7 @@ If you like what I do, buy me a `coffee`!
 -- ║ License: Free for non-commercial use                                  ║
 -- ║ Github: https://github.com/jnalepka/grenton-objects-home-assistant    ║
 -- ║                                                                       ║
--- ║ Script version: 1.0.0                                                 ║
+-- ║ Script version: 1.1.0                                                 ║
 -- ║                                                                       ║
 -- ║ Requirements:                                                         ║
 -- ║    Gate Http:                                                         ║
@@ -89,7 +89,11 @@ if reqJson.command or reqJson.status then
     local results = {}
 
     for key, value in pairs(reqJson) do
-        results[key] = load(value)()
+        local chunk = load(value)
+        if chunk then
+            local ok, result = pcall(chunk)
+            if ok then results[key] = result end
+        end
     end
 
     resp = { g_status = "OK" }
@@ -164,9 +168,10 @@ To use the Home Assistant REST API, you need to create an access token. To do th
 
 ### Grenton-side requirement for calling Grenton services
 
-1. Create a two `user features` on the `GATE_HTTP`:
+1. Create a `user feature` on the `GATE_HTTP`:
    * `queueHA`, type `OTHER`, init value `0`
-   * `queueHArunning`, type `BOOLEAN`, init value `false`
+
+> NOTE! Earlier versions also required a `queueHArunning` boolean feature. It is no longer used — the queue now keys off the request object's own `IsActive` state, so it can't get stuck. You can delete that feature if you have it.
   
 <img width="864" height="643" alt="image" src="https://github.com/user-attachments/assets/ce621b2d-55ec-46b7-9fee-b05939b2bd30" />
   
@@ -177,6 +182,7 @@ To use the Home Assistant REST API, you need to create an access token. To do th
    * RequestType = `JSON`
    * ResponseType = `JSON`
    * RequestHeaders = `Authorization: Bearer <your token>` (paste your long-lived access token)
+   * Timeout - a few seconds (recommended — so a dead Home Assistant connection can't leave the request "active" and stall the queue)
 
 2. Create a script on the `GATE_HTTP` named `HA_Integration_Queue_Prepare`.
 
@@ -190,7 +196,7 @@ To use the Home Assistant REST API, you need to create an access token. To do th
 -- ║ License: Free for non-commercial use                                  ║
 -- ║ Github: https://github.com/jnalepka/grenton-objects-home-assistant    ║
 -- ║                                                                       ║
--- ║ Version: 1.1.0                                                        ║
+-- ║ Version: 1.2.0                                                        ║
 -- ║                                                                       ║
 -- ║ Requirements:                                                         ║
 -- ║    Gate Http:                                                         ║
@@ -213,9 +219,9 @@ local builders = {
     set_state = function(r) r.v1 = value_1 end,
     set_brightness = function(r) r.v1 = value_1 end,
     set_rgb = function(r) r.v4 = string_value end,
-    set_rgbw = function(r, n)
+    set_rgbw = function(r)
         r.v4 = string_value
-        r.v1 = value_1 
+        r.v1 = value_1
         r.v2 = value_2
     end,
     set_value = function(r) r.v1 = value_1 end,
@@ -228,7 +234,8 @@ local builders = {
 local builder = builders[grenton_service]
 if builder then builder(req) end
 table.insert(queueHA, req)
-if not GATE_HTTP->queueHArunning then
+
+if GATE_HTTP->HA_Request_Grenton_Set->IsActive == 0 then
     GATE_HTTP->HA_Integration_Process_Queue()
 end
 ```
@@ -257,7 +264,7 @@ end
 -- ║ License: Free for non-commercial use                                  ║
 -- ║ Github: https://github.com/jnalepka/grenton-objects-home-assistant    ║
 -- ║                                                                       ║
--- ║ Version: 1.1.0                                                        ║
+-- ║ Version: 1.2.0                                                        ║
 -- ║                                                                       ║
 -- ║ Requirements:                                                         ║
 -- ║    Gate Http:                                                         ║
@@ -276,14 +283,14 @@ end
 -- ║                                                                       ║
 -- ╚═══════════════════════════════════════════════════════════════════════╝
 
-GATE_HTTP->queueHArunning = true
+if type(queueHA) ~= "table" then queueHA = {} end
+
 if GATE_HTTP->HA_Request_Grenton_Set->IsActive == 1 then
 	GATE_HTTP->HA_Integration_Process_Queue_Timer->Start()
     return
 end
 local nextReq = table.remove(queueHA, 1)
 if not nextReq then
-	GATE_HTTP->queueHArunning = false
     return
 end
 local path = "/api/services/grenton_objects/"..nextReq.s
