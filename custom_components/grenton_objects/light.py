@@ -204,20 +204,23 @@ class GrentonLight(GrentonPollingMixin, LightEntity):
 
     @staticmethod
     def _ha_to_dali_brightness(brightness: float | int) -> int:
-        value = float(brightness)
-        if value <= 1:
-            value = value * 255
-        value = max(0.0, min(255.0, value))
+        # Home Assistant brightness is always an integer 0-255; scale to the DALI DAPC range 0-254.
+        # (No 0-1 fraction handling here: turn_on never passes fractions, and treating a raw
+        # brightness of 1 as "100%" made the dimmest slider step jump to full brightness.)
+        value = max(0.0, min(255.0, float(brightness)))
         return int(round(value * 254 / 255))
 
     @staticmethod
     def _normalize_dali_brightness(brightness: float | int) -> int:
+        # Accepts either a 0.00-1.00 fraction (manual set_brightness call) or a raw DAPCValue
+        # 0-254 (OnDAPCValueChange / polling). Only values strictly below 1 are treated as a
+        # fraction, so a raw DAPCValue of 1 stays 1 instead of being read as 100%.
         value = float(brightness)
-        if value <= 1:
-            return int(round(max(0.0, value) * 254))
-        if value <= 254:
-            return int(round(value))
-        return 254
+        if value <= 0:
+            return 0
+        if value < 1:
+            return int(round(value * 254))
+        return int(round(min(value, 254.0)))
 
     @staticmethod
     def _dali_to_ha_brightness(dali_brightness: float | int) -> int:

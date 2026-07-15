@@ -613,3 +613,42 @@ async def test_async_force_brightness_dali_off():
     assert obj._state == STATE_OFF
     assert obj.brightness == 0
     assert obj.unique_id == "grenton_DAL0000"
+
+# --- DALI conversion edge cases (value == 1) ---
+
+def test_ha_to_dali_brightness_edge():
+    # HA minimum brightness (1) must map to the dimmest DAPC (1), NOT full (254)
+    assert GrentonLight._ha_to_dali_brightness(0) == 0
+    assert GrentonLight._ha_to_dali_brightness(1) == 1
+    assert GrentonLight._ha_to_dali_brightness(128) == 127
+    assert GrentonLight._ha_to_dali_brightness(255) == 254
+
+def test_normalize_dali_brightness_raw_vs_fraction():
+    # Raw DAPCValue 0-254: value of 1 stays 1 (not read as 100%)
+    assert GrentonLight._normalize_dali_brightness(0) == 0
+    assert GrentonLight._normalize_dali_brightness(1) == 1
+    assert GrentonLight._normalize_dali_brightness(127) == 127
+    assert GrentonLight._normalize_dali_brightness(254) == 254
+    assert GrentonLight._normalize_dali_brightness(300) == 254
+    # Strictly-below-1 values are treated as a 0.00-1.00 fraction
+    assert GrentonLight._normalize_dali_brightness(0.5) == 127
+
+@pytest.mark.asyncio
+async def test_async_turn_on_dali_min_brightness():
+    captured_command = {}
+    obj = create_obj(grenton_id="CLU220000000->DAL0000", grenton_type="DALI", response_data={"status": "ok"}, captured_command=captured_command)
+    await obj.async_turn_on(brightness=1)
+
+    assert captured_command["value"] == {
+        "command": "CLU220000000:execute(0, 'DAL0000:execute(2, 1, 0)')"
+    }
+    assert obj.is_on
+
+@pytest.mark.asyncio
+async def test_async_force_brightness_dali_raw_one():
+    # A raw DAPCValue of 1 from OnDAPCValueChange -> dim, not full
+    obj = create_obj(grenton_id="CLU220000000->DAL0000", grenton_type="DALI", response_data={"status": "ok"})
+    await obj.async_force_brightness(1)
+
+    assert obj.is_on
+    assert obj.brightness == 1
