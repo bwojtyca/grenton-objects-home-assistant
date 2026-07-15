@@ -10,7 +10,7 @@
       },
       "light_config": {
         "title": "Device Type: Light",
-        "description": "Note! Ensure that the IP address and Path in the URL are correct.\n\nNote! Enter the full Grenton object ID, which can be found in the object properties under the name, in the Id field.\n\nNote! If you want to control a single channel from an RGBW object, select the appropriate LED_R/G/B/W type.",
+        "description": "Note! Ensure that the IP address and Path in the URL are correct.\n\nNote! Enter the full Grenton object ID, which can be found in the object properties under the name, in the Id field.\n\nNote! If you want to control a single channel from an RGBW object, select the appropriate LED_R/G/B/W type.\n\nNote! For a single-color (non-RGB) strip on a LED object controlled via its overall Value, select the LED type - it gives on/off and dimming without a color picker.",
         "data": {
           "name": "Object Name",
           "api_endpoint": "URL to Grenton HTTP Listener",

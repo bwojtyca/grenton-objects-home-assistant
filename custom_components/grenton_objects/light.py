@@ -17,6 +17,7 @@ from .const import (
     CONF_GRENTON_TYPE_DALI,
     CONF_GRENTON_TYPE_RGB,
     CONF_GRENTON_TYPE_RGBW,
+    CONF_GRENTON_TYPE_LED,
     CONF_GRENTON_TYPE_DOUT,
     CONF_GRENTON_TYPE_LED_R,
     CONF_GRENTON_TYPE_LED_G,
@@ -113,7 +114,7 @@ class GrentonLight(GrentonPollingMixin, LightEntity):
 
         self._state = STATE_OFF if brightness == 0 else STATE_ON
         grenton_id_part_0, grenton_id_part_1 = self._grenton_id.split('->')
-        if self._grenton_type == CONF_GRENTON_TYPE_RGB or self._grenton_type == CONF_GRENTON_TYPE_DIMMER:
+        if self._grenton_type == CONF_GRENTON_TYPE_RGB or self._grenton_type == CONF_GRENTON_TYPE_DIMMER or self._grenton_type == CONF_GRENTON_TYPE_LED:
             if self._grenton_type == CONF_GRENTON_TYPE_DIMMER and grenton_id_part_1.startswith("ZWA"):
                 self._brightness = brightness
                 self._last_brightness = brightness
@@ -203,20 +204,23 @@ class GrentonLight(GrentonPollingMixin, LightEntity):
 
     @staticmethod
     def _ha_to_dali_brightness(brightness: float | int) -> int:
-        value = float(brightness)
-        if value <= 1:
-            value = value * 255
-        value = max(0.0, min(255.0, value))
+        # Home Assistant brightness is always an integer 0-255; scale to the DALI DAPC range 0-254.
+        # (No 0-1 fraction handling here: turn_on never passes fractions, and treating a raw
+        # brightness of 1 as "100%" made the dimmest slider step jump to full brightness.)
+        value = max(0.0, min(255.0, float(brightness)))
         return int(round(value * 254 / 255))
 
     @staticmethod
     def _normalize_dali_brightness(brightness: float | int) -> int:
+        # Accepts either a 0.00-1.00 fraction (manual set_brightness call) or a raw DAPCValue
+        # 0-254 (OnDAPCValueChange / polling). Only values strictly below 1 are treated as a
+        # fraction, so a raw DAPCValue of 1 stays 1 instead of being read as 100%.
         value = float(brightness)
-        if value <= 1:
-            return int(round(max(0.0, value) * 254))
-        if value <= 254:
-            return int(round(value))
-        return 254
+        if value <= 0:
+            return 0
+        if value < 1:
+            return int(round(value * 254))
+        return int(round(min(value, 254.0)))
 
     @staticmethod
     def _dali_to_ha_brightness(dali_brightness: float | int) -> int:
@@ -233,6 +237,7 @@ class GrentonLight(GrentonPollingMixin, LightEntity):
             rgb_color = kwargs.get("rgb_color")
             command_brightness_mapping = {
                 CONF_GRENTON_TYPE_DIMMER: {"action": "set", "index": 0, "param": scaled_brightness},
+                CONF_GRENTON_TYPE_LED: {"action": "execute", "index": 0, "param": scaled_brightness},
                 CONF_GRENTON_TYPE_LED_R: {"action": "execute", "index": 3, "param": brightness},
                 CONF_GRENTON_TYPE_LED_G: {"action": "execute", "index": 4, "param": brightness},
                 CONF_GRENTON_TYPE_LED_B: {"action": "execute", "index": 5, "param": brightness},
@@ -244,8 +249,10 @@ class GrentonLight(GrentonPollingMixin, LightEntity):
             
             if self._grenton_type == CONF_GRENTON_TYPE_DALI:
                 dali_brightness = self._ha_to_dali_brightness(brightness)
+                # DALI_GEAR(_DT8) method index 1 = SetDAPCValue(Value[0-254], RampTime[0-15]); RampTime 0 = immediate.
+                # (Index 2 is Switch, which just toggles and ignores the value.)
                 command = {
-                    "command": f"{grenton_id_part_0}:execute(0, '{grenton_id_part_1}:execute(1, {dali_brightness})')"
+                    "command": f"{grenton_id_part_0}:execute(0, '{grenton_id_part_1}:execute(1, {dali_brightness}, 0)')"
                 }
                 self._brightness = self._dali_to_ha_brightness(dali_brightness)
                 self._last_brightness = self._brightness
@@ -317,6 +324,7 @@ class GrentonLight(GrentonPollingMixin, LightEntity):
             grenton_id_part_0, grenton_id_part_1 = self._grenton_id.split('->')
             command_mapping = {
                 CONF_GRENTON_TYPE_RGB: {"action": "execute", "index": 0},
+                CONF_GRENTON_TYPE_LED: {"action": "execute", "index": 0},
                 CONF_GRENTON_TYPE_DIMMER: {"action": "set", "index": 0},
                 CONF_GRENTON_TYPE_DOUT: {"action": "set", "index": 0},
                 CONF_GRENTON_TYPE_DALI: {"action": "execute", "index": 1},
@@ -338,8 +346,9 @@ class GrentonLight(GrentonPollingMixin, LightEntity):
                     config = command_mapping.get(CONF_GRENTON_TYPE_RGB, {"action": "set", "index": 0})
             
             if self._grenton_type == CONF_GRENTON_TYPE_DALI:
+                # SetDAPCValue(0, RampTime 0) (method index 1) turns the gear off immediately
                 command = {
-                    "command": f"{grenton_id_part_0}:execute(0, '{grenton_id_part_1}:execute(1, 0)')"
+                    "command": f"{grenton_id_part_0}:execute(0, '{grenton_id_part_1}:execute(1, 0, 0)')"
                 }
             else:
                 command = self._generate_command("command", grenton_id_part_0, grenton_id_part_1, config["action"], config["index"], 0)
@@ -366,6 +375,7 @@ class GrentonLight(GrentonPollingMixin, LightEntity):
                 CONF_GRENTON_TYPE_DOUT: 0,
                 CONF_GRENTON_TYPE_DALI: 2,
                 CONF_GRENTON_TYPE_DIMMER: 0,
+                CONF_GRENTON_TYPE_LED: 0,
                 CONF_GRENTON_TYPE_LED_R: 3,
                 CONF_GRENTON_TYPE_LED_G: 4,
                 CONF_GRENTON_TYPE_LED_B: 5,
@@ -393,7 +403,7 @@ class GrentonLight(GrentonPollingMixin, LightEntity):
                 return
 
             self._state = STATE_OFF if data.get("status") == 0 else STATE_ON
-            if self._grenton_type == CONF_GRENTON_TYPE_RGB or self._grenton_type == CONF_GRENTON_TYPE_DIMMER:
+            if self._grenton_type == CONF_GRENTON_TYPE_RGB or self._grenton_type == CONF_GRENTON_TYPE_DIMMER or self._grenton_type == CONF_GRENTON_TYPE_LED:
                 if self._grenton_type == CONF_GRENTON_TYPE_DIMMER and grenton_id_part_1.startswith("ZWA"):
                     self._brightness = data.get("status")
                     self._last_brightness = data.get("status")
