@@ -202,6 +202,21 @@ async def test_async_turn_on_rgb_no_rgb_color():
     assert obj.unique_id == "grenton_RGB0000"
 
 @pytest.mark.asyncio
+async def test_async_turn_on_led():
+    captured_command = {}
+    obj = create_obj(grenton_id="CLU220000000->LED0000", grenton_type="LED", response_data={"status": "ok"}, captured_command=captured_command)
+    await obj.async_turn_on()
+
+    assert captured_command["value"] == {
+        "command": "CLU220000000:execute(0, 'LED0000:execute(0, 1.0)')"
+    }
+    assert obj.is_on
+    assert obj._state == STATE_ON
+    assert obj.brightness == 255
+    assert obj._last_command_time == 123.456
+    assert obj.unique_id == "grenton_LED0000"
+
+@pytest.mark.asyncio
 async def test_async_turn_off_dout():
     captured_command = {}
     obj = create_obj(grenton_type = "DOUT", response_data={"status": "ok"}, captured_command=captured_command)
@@ -228,6 +243,20 @@ async def test_async_turn_off_dimmer():
     assert obj._state == STATE_OFF
     assert obj._last_command_time == 123.456
     assert obj.unique_id == "grenton_DIM0000"
+
+@pytest.mark.asyncio
+async def test_async_turn_off_led():
+    captured_command = {}
+    obj = create_obj(grenton_id="CLU220000000->LED0000", grenton_type="LED", response_data={"status": "ok"}, captured_command=captured_command)
+    await obj.async_turn_off()
+
+    assert captured_command["value"] == {
+        "command": "CLU220000000:execute(0, 'LED0000:execute(0, 0)')"
+    }
+    assert not obj.is_on
+    assert obj._state == STATE_OFF
+    assert obj._last_command_time == 123.456
+    assert obj.unique_id == "grenton_LED0000"
 
 @pytest.mark.asyncio
 async def test_async_turn_off_dali():
@@ -366,6 +395,33 @@ async def test_async_update_dimmer():
     assert obj._state == STATE_ON
     assert obj.brightness == 255
     assert obj.unique_id == "grenton_DIM0000"
+
+@pytest.mark.asyncio
+async def test_async_update_led():
+    captured_command = {}
+    obj = create_obj(grenton_id="CLU220000000->LED0000", grenton_type="LED", response_data={"status": 1}, captured_command=captured_command)
+    await obj.async_update()
+
+    assert captured_command["value"] == {
+        "status": "return CLU220000000:execute(0, 'LED0000:get(0)')"
+    }
+    assert obj.is_on
+    assert obj._state == STATE_ON
+    assert obj.brightness == 255
+    assert obj.unique_id == "grenton_LED0000"
+
+@pytest.mark.asyncio
+async def test_async_update_led_off():
+    captured_command = {}
+    obj = create_obj(grenton_id="CLU220000000->LED0000", grenton_type="LED", response_data={"status": 0}, captured_command=captured_command)
+    await obj.async_update()
+
+    assert captured_command["value"] == {
+        "status": "return CLU220000000:execute(0, 'LED0000:get(0)')"
+    }
+    assert not obj.is_on
+    assert obj._state == STATE_OFF
+    assert obj.unique_id == "grenton_LED0000"
 
 @pytest.mark.asyncio
 async def test_async_update_dali():

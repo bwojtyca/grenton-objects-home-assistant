@@ -17,6 +17,7 @@ from .const import (
     CONF_GRENTON_TYPE_DALI,
     CONF_GRENTON_TYPE_RGB,
     CONF_GRENTON_TYPE_RGBW,
+    CONF_GRENTON_TYPE_LED,
     CONF_GRENTON_TYPE_DOUT,
     CONF_GRENTON_TYPE_LED_R,
     CONF_GRENTON_TYPE_LED_G,
@@ -113,7 +114,7 @@ class GrentonLight(GrentonPollingMixin, LightEntity):
 
         self._state = STATE_OFF if brightness == 0 else STATE_ON
         grenton_id_part_0, grenton_id_part_1 = self._grenton_id.split('->')
-        if self._grenton_type == CONF_GRENTON_TYPE_RGB or self._grenton_type == CONF_GRENTON_TYPE_DIMMER:
+        if self._grenton_type == CONF_GRENTON_TYPE_RGB or self._grenton_type == CONF_GRENTON_TYPE_DIMMER or self._grenton_type == CONF_GRENTON_TYPE_LED:
             if self._grenton_type == CONF_GRENTON_TYPE_DIMMER and grenton_id_part_1.startswith("ZWA"):
                 self._brightness = brightness
                 self._last_brightness = brightness
@@ -233,6 +234,7 @@ class GrentonLight(GrentonPollingMixin, LightEntity):
             rgb_color = kwargs.get("rgb_color")
             command_brightness_mapping = {
                 CONF_GRENTON_TYPE_DIMMER: {"action": "set", "index": 0, "param": scaled_brightness},
+                CONF_GRENTON_TYPE_LED: {"action": "execute", "index": 0, "param": scaled_brightness},
                 CONF_GRENTON_TYPE_LED_R: {"action": "execute", "index": 3, "param": brightness},
                 CONF_GRENTON_TYPE_LED_G: {"action": "execute", "index": 4, "param": brightness},
                 CONF_GRENTON_TYPE_LED_B: {"action": "execute", "index": 5, "param": brightness},
@@ -317,6 +319,7 @@ class GrentonLight(GrentonPollingMixin, LightEntity):
             grenton_id_part_0, grenton_id_part_1 = self._grenton_id.split('->')
             command_mapping = {
                 CONF_GRENTON_TYPE_RGB: {"action": "execute", "index": 0},
+                CONF_GRENTON_TYPE_LED: {"action": "execute", "index": 0},
                 CONF_GRENTON_TYPE_DIMMER: {"action": "set", "index": 0},
                 CONF_GRENTON_TYPE_DOUT: {"action": "set", "index": 0},
                 CONF_GRENTON_TYPE_DALI: {"action": "execute", "index": 1},
@@ -366,6 +369,7 @@ class GrentonLight(GrentonPollingMixin, LightEntity):
                 CONF_GRENTON_TYPE_DOUT: 0,
                 CONF_GRENTON_TYPE_DALI: 2,
                 CONF_GRENTON_TYPE_DIMMER: 0,
+                CONF_GRENTON_TYPE_LED: 0,
                 CONF_GRENTON_TYPE_LED_R: 3,
                 CONF_GRENTON_TYPE_LED_G: 4,
                 CONF_GRENTON_TYPE_LED_B: 5,
@@ -393,7 +397,7 @@ class GrentonLight(GrentonPollingMixin, LightEntity):
                 return
 
             self._state = STATE_OFF if data.get("status") == 0 else STATE_ON
-            if self._grenton_type == CONF_GRENTON_TYPE_RGB or self._grenton_type == CONF_GRENTON_TYPE_DIMMER:
+            if self._grenton_type == CONF_GRENTON_TYPE_RGB or self._grenton_type == CONF_GRENTON_TYPE_DIMMER or self._grenton_type == CONF_GRENTON_TYPE_LED:
                 if self._grenton_type == CONF_GRENTON_TYPE_DIMMER and grenton_id_part_1.startswith("ZWA"):
                     self._brightness = data.get("status")
                     self._last_brightness = data.get("status")
