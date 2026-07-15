@@ -246,8 +246,9 @@ class GrentonLight(GrentonPollingMixin, LightEntity):
             
             if self._grenton_type == CONF_GRENTON_TYPE_DALI:
                 dali_brightness = self._ha_to_dali_brightness(brightness)
+                # DALI_GEAR method index 2 = SetDAPCValue(Value[0-254], RampTime[0-15]); RampTime 0 = immediate
                 command = {
-                    "command": f"{grenton_id_part_0}:execute(0, '{grenton_id_part_1}:execute(1, {dali_brightness})')"
+                    "command": f"{grenton_id_part_0}:execute(0, '{grenton_id_part_1}:execute(2, {dali_brightness}, 0)')"
                 }
                 self._brightness = self._dali_to_ha_brightness(dali_brightness)
                 self._last_brightness = self._brightness
@@ -322,7 +323,7 @@ class GrentonLight(GrentonPollingMixin, LightEntity):
                 CONF_GRENTON_TYPE_LED: {"action": "execute", "index": 0},
                 CONF_GRENTON_TYPE_DIMMER: {"action": "set", "index": 0},
                 CONF_GRENTON_TYPE_DOUT: {"action": "set", "index": 0},
-                CONF_GRENTON_TYPE_DALI: {"action": "execute", "index": 1},
+                CONF_GRENTON_TYPE_DALI: {"action": "execute", "index": 2},
                 CONF_GRENTON_TYPE_LED_R: {"action": "execute", "index": 3},
                 CONF_GRENTON_TYPE_LED_G: {"action": "execute", "index": 4},
                 CONF_GRENTON_TYPE_LED_B: {"action": "execute", "index": 5},
@@ -341,8 +342,9 @@ class GrentonLight(GrentonPollingMixin, LightEntity):
                     config = command_mapping.get(CONF_GRENTON_TYPE_RGB, {"action": "set", "index": 0})
             
             if self._grenton_type == CONF_GRENTON_TYPE_DALI:
+                # SetDAPCValue(0, RampTime 0) turns the gear off immediately
                 command = {
-                    "command": f"{grenton_id_part_0}:execute(0, '{grenton_id_part_1}:execute(1, 0)')"
+                    "command": f"{grenton_id_part_0}:execute(0, '{grenton_id_part_1}:execute(2, 0, 0)')"
                 }
             else:
                 command = self._generate_command("command", grenton_id_part_0, grenton_id_part_1, config["action"], config["index"], 0)
