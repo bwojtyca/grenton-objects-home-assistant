@@ -10,7 +10,7 @@
       },
       "light_config": {
         "title": "Typ urządzenia: Światło",
-        "description": "Uwaga! Zwróć uwagę, czy adres IP oraz Path w URL są poprawne.\n\nUwaga! Wpisz pełne ID obiektu Grenton, które znajduje się we właściwościach obiektu, pod nazwą, w polu Id.\n\nUwaga! Jeśli chcesz sterować pojedynczym kanałem z obiektu RGBW, wybierz odpowiednio typ LED_R/G/B/W.\n\nUwaga! Dla jednokolorowej (nie-RGB) taśmy na obiekcie LED sterowanej jego ogólną wartością (Value) wybierz typ LED - daje wł/wył i ściemnianie bez wyboru koloru.",
+        "description": "Uwaga! Zwróć uwagę, czy adres IP oraz Path w URL są poprawne.\n\nUwaga! Wpisz pełne ID obiektu Grenton, które znajduje się we właściwościach obiektu, pod nazwą, w polu Id.\n\nUwaga! Jeśli chcesz sterować pojedynczym kanałem z obiektu RGBW, wybierz odpowiednio typ LED_R/G/B/W.\n\nUwaga! Dla jednokolorowej (nie-RGB) taśmy na obiekcie LED sterowanej jego ogólną wartością (Value) wybierz typ LED - daje wł/wył i ściemnianie bez wyboru koloru.\n\nUwaga! Dla samodzielnego obiektu LED_CHANNEL (pojedynczy ściemnialny kanał PWM, wartość 0-255) wybierz typ LED_CHANNEL.",
         "data": {
           "name": "Nazwa obiektu",
           "api_endpoint": "Adres URL do Grenton HTTP Listener",
