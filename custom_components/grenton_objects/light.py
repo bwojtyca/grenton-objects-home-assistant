@@ -23,6 +23,7 @@ from .const import (
     CONF_GRENTON_TYPE_LED_G,
     CONF_GRENTON_TYPE_LED_B,
     CONF_GRENTON_TYPE_LED_W,
+    CONF_GRENTON_TYPE_LED_CHANNEL,
     CONF_AUTO_UPDATE,
     CONF_UPDATE_INTERVAL, 
     DEFAULT_UPDATE_INTERVAL,
@@ -121,7 +122,7 @@ class GrentonLight(GrentonPollingMixin, LightEntity):
             else:
                 self._brightness = brightness * 255
                 self._last_brightness = brightness * 255
-        elif self._grenton_type == CONF_GRENTON_TYPE_LED_R or self._grenton_type == CONF_GRENTON_TYPE_LED_G or self._grenton_type == CONF_GRENTON_TYPE_LED_B or self._grenton_type == CONF_GRENTON_TYPE_LED_W:
+        elif self._grenton_type == CONF_GRENTON_TYPE_LED_R or self._grenton_type == CONF_GRENTON_TYPE_LED_G or self._grenton_type == CONF_GRENTON_TYPE_LED_B or self._grenton_type == CONF_GRENTON_TYPE_LED_W or self._grenton_type == CONF_GRENTON_TYPE_LED_CHANNEL:
             self._brightness = brightness
             self._last_brightness = brightness
         self.async_write_ha_state()
@@ -242,6 +243,7 @@ class GrentonLight(GrentonPollingMixin, LightEntity):
                 CONF_GRENTON_TYPE_LED_G: {"action": "execute", "index": 4, "param": brightness},
                 CONF_GRENTON_TYPE_LED_B: {"action": "execute", "index": 5, "param": brightness},
                 CONF_GRENTON_TYPE_LED_W: {"action": "execute", "index": 12, "param": brightness},
+                CONF_GRENTON_TYPE_LED_CHANNEL: {"action": "execute", "index": 0, "param": brightness},
             }
             white = kwargs.get("white")
 
@@ -332,6 +334,7 @@ class GrentonLight(GrentonPollingMixin, LightEntity):
                 CONF_GRENTON_TYPE_LED_G: {"action": "execute", "index": 4},
                 CONF_GRENTON_TYPE_LED_B: {"action": "execute", "index": 5},
                 CONF_GRENTON_TYPE_LED_W: {"action": "execute", "index": 12},
+                CONF_GRENTON_TYPE_LED_CHANNEL: {"action": "execute", "index": 0},
             }
             
             if self._grenton_type == CONF_GRENTON_TYPE_DIMMER and grenton_id_part_1.startswith("ZWA"):
@@ -380,6 +383,7 @@ class GrentonLight(GrentonPollingMixin, LightEntity):
                 CONF_GRENTON_TYPE_LED_G: 4,
                 CONF_GRENTON_TYPE_LED_B: 5,
                 CONF_GRENTON_TYPE_LED_W: 15,
+                CONF_GRENTON_TYPE_LED_CHANNEL: 0,
             }
             
             if self._grenton_type in xml_index__mapping:
@@ -414,7 +418,7 @@ class GrentonLight(GrentonPollingMixin, LightEntity):
                 dali_brightness = self._normalize_dali_brightness(data.get("status"))
                 self._brightness = self._dali_to_ha_brightness(dali_brightness)
                 self._last_brightness = self._brightness
-            elif self._grenton_type == CONF_GRENTON_TYPE_LED_R or self._grenton_type == CONF_GRENTON_TYPE_LED_G or self._grenton_type == CONF_GRENTON_TYPE_LED_B or self._grenton_type == CONF_GRENTON_TYPE_LED_W:
+            elif self._grenton_type == CONF_GRENTON_TYPE_LED_R or self._grenton_type == CONF_GRENTON_TYPE_LED_G or self._grenton_type == CONF_GRENTON_TYPE_LED_B or self._grenton_type == CONF_GRENTON_TYPE_LED_W or self._grenton_type == CONF_GRENTON_TYPE_LED_CHANNEL:
                 self._brightness = data.get("status")
                 self._last_brightness = data.get("status")
             
