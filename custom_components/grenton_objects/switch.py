@@ -91,11 +91,11 @@ class GrentonSwitch(GrentonPollingMixin, SwitchEntity):
 
     def _output_command(self, grenton_id_part_0, grenton_id_part_1, physical_on):
         if self._grenton_type == CONF_GRENTON_TYPE_SATEL_OUTPUT:
-            # SatelOutput is switched by named methods SwitchOn/SwitchOff (as the Object Manager
-            # and Grenton docs invoke them, e.g. SwitchOn(0)); the numeric execute() index did not
-            # map to these methods.
+            # SatelOutput is switched by named methods SwitchOn()/SwitchOff() with NO argument
+            # (the Object Manager generates exactly SwitchOff()); the numeric execute() index and
+            # a SwitchOn(0) argument both failed.
             method = "SwitchOn" if physical_on else "SwitchOff"
-            return {"command": f"{grenton_id_part_0}:execute(0, '{grenton_id_part_1}:{method}(0)')"}
+            return {"command": f"{grenton_id_part_0}:execute(0, '{grenton_id_part_1}:{method}()')"}
         value = 1 if physical_on else 0
         return {"command": f"{grenton_id_part_0}:execute(0, '{grenton_id_part_1}:set(0, {value})')"}
 
