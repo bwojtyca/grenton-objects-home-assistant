@@ -99,7 +99,7 @@ async def test_async_update_keeps_state_and_goes_unavailable_after_failures():
     assert obj.available is False
     assert obj.is_on is True                # state retained while unavailable
 
-# --- SatelOutput (switch): SwitchOn = execute(2), SwitchOff = execute(3), read get(0) ---
+# --- SatelOutput (switch): SwitchOn/SwitchOff by name, read get(0) ---
 
 @pytest.mark.asyncio
 async def test_async_turn_on_satel_output():
@@ -108,7 +108,7 @@ async def test_async_turn_on_satel_output():
     await obj.async_turn_on()
 
     assert captured_command["value"] == {
-        "command": "CLU511002420:execute(0, 'SAT7310:execute(2, 0)')"
+        "command": "CLU511002420:execute(0, 'SAT7310:SwitchOn(0)')"
     }
     assert obj._state == STATE_ON
     assert obj.is_on is True
@@ -121,7 +121,7 @@ async def test_async_turn_off_satel_output():
     await obj.async_turn_off()
 
     assert captured_command["value"] == {
-        "command": "CLU511002420:execute(0, 'SAT7310:execute(3, 0)')"
+        "command": "CLU511002420:execute(0, 'SAT7310:SwitchOff(0)')"
     }
     assert obj._state == STATE_OFF
     assert obj.is_on is not True
@@ -169,9 +169,9 @@ async def test_async_turn_on_reversed_satel_output():
     obj = create_obj(grenton_id="CLU511002420->SAT7310", grenton_type="SATEL_OUTPUT", reversed_state=True, response_data={"status": "ok"}, captured_command=captured_command)
     await obj.async_turn_on()
 
-    # reversed -> SwitchOff (execute(3)) on HA "on"
+    # reversed -> SwitchOff on HA "on"
     assert captured_command["value"] == {
-        "command": "CLU511002420:execute(0, 'SAT7310:execute(3, 0)')"
+        "command": "CLU511002420:execute(0, 'SAT7310:SwitchOff(0)')"
     }
     assert obj.is_on is True
 
