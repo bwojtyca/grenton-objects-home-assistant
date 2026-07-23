@@ -163,6 +163,7 @@ class GrentonConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             CONF_GRENTON_ID: user_input[CONF_GRENTON_ID],
             CONF_OBJECT_NAME: user_input[CONF_OBJECT_NAME],
             CONF_GRENTON_TYPE: user_input.get(CONF_GRENTON_TYPE, CONF_GRENTON_TYPE_DOUT),
+            CONF_REVERSED: user_input.get(CONF_REVERSED, False),
             CONF_AUTO_UPDATE: user_input[CONF_AUTO_UPDATE],
             CONF_UPDATE_INTERVAL: user_input[CONF_UPDATE_INTERVAL]
         })
@@ -332,6 +333,7 @@ class GrentonConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         translation_key="switch_grenton_type"
                     )
                 ),
+                vol.Required(CONF_REVERSED, default=defaults.get(CONF_REVERSED, False)): bool,
                 vol.Required(CONF_AUTO_UPDATE, default=defaults.get(CONF_AUTO_UPDATE, True)): bool,
                 vol.Required(CONF_UPDATE_INTERVAL, default=defaults.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)): vol.All(vol.Coerce(int), vol.Range(min=5, max=3600))
             })

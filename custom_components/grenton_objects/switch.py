@@ -15,6 +15,7 @@ from .const import (
     CONF_GRENTON_TYPE,
     CONF_GRENTON_TYPE_DOUT,
     CONF_GRENTON_TYPE_SATEL_OUTPUT,
+    CONF_REVERSED,
     CONF_AUTO_UPDATE,
     CONF_UPDATE_INTERVAL,
     DEFAULT_UPDATE_INTERVAL,
@@ -37,11 +38,12 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     grenton_id = config_entry.data.get(CONF_GRENTON_ID)
     object_name = config_entry.data.get(CONF_OBJECT_NAME)
     grenton_type = config_entry.options.get(CONF_GRENTON_TYPE, config_entry.data.get(CONF_GRENTON_TYPE, CONF_GRENTON_TYPE_DOUT))
+    reversed_state = config_entry.options.get(CONF_REVERSED, config_entry.data.get(CONF_REVERSED, False))
     auto_update = config_entry.options.get(CONF_AUTO_UPDATE, config_entry.data.get(CONF_AUTO_UPDATE, True))
     update_interval = config_entry.options.get(CONF_UPDATE_INTERVAL, config_entry.data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL))
 
     api_client = get_api_client(hass, api_endpoint)
-    entity = GrentonSwitch(api_endpoint, grenton_id, object_name, grenton_type, auto_update, update_interval, api_client)
+    entity = GrentonSwitch(api_endpoint, grenton_id, object_name, grenton_type, reversed_state, auto_update, update_interval, api_client)
     async_add_entities([entity], True)
 
     if DOMAIN not in hass.data:
@@ -50,11 +52,12 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     hass.data[DOMAIN]["entities"][entity.entity_id] = entity
 
 class GrentonSwitch(GrentonPollingMixin, SwitchEntity):
-    def __init__(self, api_endpoint, grenton_id, object_name, grenton_type, auto_update, update_interval, api_client):
+    def __init__(self, api_endpoint, grenton_id, object_name, grenton_type, reversed_state, auto_update, update_interval, api_client):
         self._api_endpoint = api_endpoint
         self._grenton_id = grenton_id
         self._object_name = object_name
         self._grenton_type = grenton_type
+        self._reversed = bool(reversed_state)
         self._state = None
         self._unique_id = f"grenton_{grenton_id.split('->')[1]}"
         self._last_command_time = None
@@ -65,7 +68,9 @@ class GrentonSwitch(GrentonPollingMixin, SwitchEntity):
         self._api_client = api_client
 
     async def async_force_state(self, state: int):
-        self._state = STATE_ON if state == 1 else STATE_OFF
+        # The pushed value is the physical Grenton Value; invert to the HA state when reversed.
+        physical_on = state == 1
+        self._state = STATE_ON if (physical_on != self._reversed) else STATE_OFF
         self.async_write_ha_state()
 
     @property
@@ -84,14 +89,19 @@ class GrentonSwitch(GrentonPollingMixin, SwitchEntity):
     def should_poll(self):
         return False
 
+    def _output_command(self, grenton_id_part_0, grenton_id_part_1, physical_on):
+        if self._grenton_type == CONF_GRENTON_TYPE_SATEL_OUTPUT:
+            # SatelOutput: SwitchOn = method index 2, SwitchOff = index 3 (no params)
+            index = 2 if physical_on else 3
+            return {"command": f"{grenton_id_part_0}:execute(0, '{grenton_id_part_1}:execute({index})')"}
+        value = 1 if physical_on else 0
+        return {"command": f"{grenton_id_part_0}:execute(0, '{grenton_id_part_1}:set(0, {value})')"}
+
     async def async_turn_on(self, **kwargs):
         try:
             grenton_id_part_0, grenton_id_part_1 = self._grenton_id.split('->')
-            if self._grenton_type == CONF_GRENTON_TYPE_SATEL_OUTPUT:
-                # SatelOutput method index 2 = SwitchOn (no params)
-                command = {"command": f"{grenton_id_part_0}:execute(0, '{grenton_id_part_1}:execute(2)')"}
-            else:
-                command = {"command": f"{grenton_id_part_0}:execute(0, '{grenton_id_part_1}:set(0, 1)')"}
+            # HA "on" drives the physical output on, or off when the switch is reversed
+            command = self._output_command(grenton_id_part_0, grenton_id_part_1, not self._reversed)
             self._state = STATE_ON
             self._last_command_time = self.hass.loop.time() if self.hass is not None else None
             self.async_write_ha_state()
@@ -103,11 +113,8 @@ class GrentonSwitch(GrentonPollingMixin, SwitchEntity):
     async def async_turn_off(self, **kwargs):
         try:
             grenton_id_part_0, grenton_id_part_1 = self._grenton_id.split('->')
-            if self._grenton_type == CONF_GRENTON_TYPE_SATEL_OUTPUT:
-                # SatelOutput method index 3 = SwitchOff (no params)
-                command = {"command": f"{grenton_id_part_0}:execute(0, '{grenton_id_part_1}:execute(3)')"}
-            else:
-                command = {"command": f"{grenton_id_part_0}:execute(0, '{grenton_id_part_1}:set(0, 0)')"}
+            # HA "off" drives the physical output off, or on when the switch is reversed
+            command = self._output_command(grenton_id_part_0, grenton_id_part_1, self._reversed)
             self._state = STATE_OFF
             self._last_command_time = self.hass.loop.time() if self.hass is not None else None
             self.async_write_ha_state()
@@ -132,7 +139,8 @@ class GrentonSwitch(GrentonPollingMixin, SwitchEntity):
             if is_within_debounce(self._last_command_time, self.hass):
                 return
 
-            self._state = STATE_OFF if data.get("status") == 0 else STATE_ON
+            physical_on = data.get("status") != 0
+            self._state = STATE_ON if (physical_on != self._reversed) else STATE_OFF
             self.async_write_ha_state()
         except (aiohttp.ClientError, GrentonApiError) as ex:
             self._handle_update_failure(ex)

@@ -28,6 +28,7 @@
           "api_endpoint": "URL to Grenton HTTP Listener",
           "grenton_id": "Grenton Object ID",
           "grenton_type": "Grenton Object Type",
+          "reversed": "Invert state (on/off)",
           "auto_update": "Automatic Object Updates",
           "update_interval": "Refresh Interval (in seconds)"
         }

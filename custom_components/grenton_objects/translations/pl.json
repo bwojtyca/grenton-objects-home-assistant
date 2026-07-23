@@ -28,6 +28,7 @@
           "api_endpoint": "Adres URL do Grenton HTTP Listener",
           "grenton_id": "ID obiektu Grenton",
           "grenton_type": "Typ obiektu Grenton",
+          "reversed": "Odwróć stan (wł/wył)",
           "auto_update": "Automatyczna aktualizacja obiektu",
           "update_interval": "Okres odświeżania (w sekundach)"
         }
