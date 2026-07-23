@@ -88,6 +88,19 @@ class GrentonConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if grenton_id and "->" in grenton_id:
             self.hass.data[f"{DOMAIN}_last_grenton_clu_id"] = grenton_id.split("->")[0]
 
+    def _default_api_endpoint(self) -> str:
+        # Prefer the endpoint used last in this session, then reuse the endpoint of an
+        # already-configured object (config entries persist across restarts, hass.data does
+        # not), and only fall back to a hardcoded example when nothing exists yet.
+        last = self.hass.data.get(f"{DOMAIN}_last_api_endpoint")
+        if last:
+            return last
+        for entry in self._async_current_entries():
+            endpoint = entry.options.get(CONF_API_ENDPOINT, entry.data.get(CONF_API_ENDPOINT))
+            if endpoint:
+                return endpoint
+        return "http://192.168.0.4/HAlistener"
+
     def _is_duplicate_grenton_id(self, grenton_id: str, grenton_type: str | None = None) -> bool:
         for entry in self._async_current_entries():
             existing_id = entry.data.get(CONF_GRENTON_ID)
@@ -295,8 +308,7 @@ class GrentonConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         })
         
     def _get_device_schema(self, user_input=None):
-        last_api_endpoint = self.hass.data.get(f"{DOMAIN}_last_api_endpoint", "http://192.168.0.4/HAlistener")
-        last_grenton_clu_id = self.hass.data.get(f"{DOMAIN}_last_grenton_clu_id", "CLU220000000")
+        last_api_endpoint = self._default_api_endpoint()
 
         defaults = user_input or {}
 
@@ -304,7 +316,7 @@ class GrentonConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return vol.Schema({
                 vol.Required(CONF_OBJECT_NAME, default=defaults.get(CONF_OBJECT_NAME, "")): str,
                 vol.Required(CONF_API_ENDPOINT, default=defaults.get(CONF_API_ENDPOINT, last_api_endpoint)): str,
-                vol.Required(CONF_GRENTON_ID, default=defaults.get(CONF_GRENTON_ID, last_grenton_clu_id + "->DOU0000")): str,
+                vol.Required(CONF_GRENTON_ID, description={"suggested_value": defaults.get(CONF_GRENTON_ID)}): str,
                 vol.Required(CONF_GRENTON_TYPE, default=defaults.get(CONF_GRENTON_TYPE, CONF_GRENTON_TYPE_DOUT)): vol.In(LIGHT_GRENTON_TYPE_OPTIONS),
                 vol.Required(CONF_AUTO_UPDATE, default=defaults.get(CONF_AUTO_UPDATE, True)): bool,
                 vol.Required(CONF_UPDATE_INTERVAL, default=defaults.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)): vol.All(vol.Coerce(int), vol.Range(min=5, max=3600))
@@ -313,7 +325,7 @@ class GrentonConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return vol.Schema({
                 vol.Required(CONF_OBJECT_NAME, default=defaults.get(CONF_OBJECT_NAME, "")): str,
                 vol.Required(CONF_API_ENDPOINT, default=defaults.get(CONF_API_ENDPOINT, last_api_endpoint)): str,
-                vol.Required(CONF_GRENTON_ID, default=defaults.get(CONF_GRENTON_ID, last_grenton_clu_id + "->DOU0000")): str,
+                vol.Required(CONF_GRENTON_ID, description={"suggested_value": defaults.get(CONF_GRENTON_ID)}): str,
                 vol.Required(CONF_GRENTON_TYPE, default=defaults.get(CONF_GRENTON_TYPE, CONF_GRENTON_TYPE_DOUT)): SelectSelector(
                     SelectSelectorConfig(
                         options=SWITCH_GRENTON_TYPE_OPTIONS,
@@ -327,7 +339,7 @@ class GrentonConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return vol.Schema({
                 vol.Required(CONF_OBJECT_NAME, default=defaults.get(CONF_OBJECT_NAME, "")): str,
                 vol.Required(CONF_API_ENDPOINT, default=defaults.get(CONF_API_ENDPOINT, last_api_endpoint)): str,
-                vol.Required(CONF_GRENTON_ID, default=defaults.get(CONF_GRENTON_ID, last_grenton_clu_id + "->ROL0000")): str,
+                vol.Required(CONF_GRENTON_ID, description={"suggested_value": defaults.get(CONF_GRENTON_ID)}): str,
                 vol.Required(CONF_DEVICE_CLASS, default=defaults.get(CONF_DEVICE_CLASS, CoverDeviceClass.BLIND.value)): SelectSelector(
                     SelectSelectorConfig(
                         options=[dc.value for dc in CoverDeviceClass],
@@ -342,14 +354,14 @@ class GrentonConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return vol.Schema({
                 vol.Required(CONF_OBJECT_NAME, default=defaults.get(CONF_OBJECT_NAME, "")): str,
                 vol.Required(CONF_API_ENDPOINT, default=defaults.get(CONF_API_ENDPOINT, last_api_endpoint)): str,
-                vol.Required(CONF_GRENTON_ID, default=defaults.get(CONF_GRENTON_ID, last_grenton_clu_id + "->THE0000")): str,
+                vol.Required(CONF_GRENTON_ID, description={"suggested_value": defaults.get(CONF_GRENTON_ID)}): str,
                 vol.Required(CONF_UPDATE_INTERVAL, default=defaults.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)): vol.All(vol.Coerce(int), vol.Range(min=5, max=3600))
             })
         elif self.device_type == "sensor":
             return vol.Schema({
                 vol.Required(CONF_OBJECT_NAME, default=defaults.get(CONF_OBJECT_NAME, "")): str,
                 vol.Required(CONF_API_ENDPOINT, default=defaults.get(CONF_API_ENDPOINT, last_api_endpoint)): str,
-                vol.Required(CONF_GRENTON_ID, default=defaults.get(CONF_GRENTON_ID, last_grenton_clu_id + "->PAN0000")): str,
+                vol.Required(CONF_GRENTON_ID, description={"suggested_value": defaults.get(CONF_GRENTON_ID)}): str,
                 vol.Required(CONF_GRENTON_TYPE, default=defaults.get(CONF_GRENTON_TYPE, CONF_GRENTON_TYPE_DEFAULT_SENSOR)): vol.In(SENSOR_GRENTON_TYPE_OPTIONS),
                 vol.Required(CONF_DEVICE_CLASS, default=defaults.get(CONF_DEVICE_CLASS, "temperature")): SelectSelector(
                     SelectSelectorConfig(
@@ -372,7 +384,7 @@ class GrentonConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return vol.Schema({
                 vol.Required(CONF_OBJECT_NAME, default=defaults.get(CONF_OBJECT_NAME, "")): str,
                 vol.Required(CONF_API_ENDPOINT, default=defaults.get(CONF_API_ENDPOINT, last_api_endpoint)): str,
-                vol.Required(CONF_GRENTON_ID, default=defaults.get(CONF_GRENTON_ID, last_grenton_clu_id + "->DIN0000")): str,
+                vol.Required(CONF_GRENTON_ID, description={"suggested_value": defaults.get(CONF_GRENTON_ID)}): str,
                 vol.Required(CONF_GRENTON_TYPE, default=defaults.get(CONF_GRENTON_TYPE, CONF_GRENTON_TYPE_DIN)): SelectSelector(
                     SelectSelectorConfig(
                         options=BINARY_SENSOR_GRENTON_TYPE_OPTIONS,
@@ -392,7 +404,7 @@ class GrentonConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return vol.Schema({
                 vol.Required(CONF_OBJECT_NAME, default=defaults.get(CONF_OBJECT_NAME, "")): str,
                 vol.Required(CONF_API_ENDPOINT, default=defaults.get(CONF_API_ENDPOINT, last_api_endpoint)): str,
-                vol.Required(CONF_GRENTON_ID, default=defaults.get(CONF_GRENTON_ID, last_grenton_clu_id + "->script_name")): str
+                vol.Required(CONF_GRENTON_ID, description={"suggested_value": defaults.get(CONF_GRENTON_ID)}): str
             })
     
     @staticmethod
