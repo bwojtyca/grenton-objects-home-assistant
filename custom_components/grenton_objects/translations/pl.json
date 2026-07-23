@@ -130,7 +130,7 @@
         "cover": "Rolety – ROLLER_SHUTTER / ZWAVE",
         "climate": "Klimat – THERMOSTAT",
         "sensor": "Czujnik – ONE_WIRE / TEMPERATURE / ANALOG IN / MODBUS / ZWAVE / Cecha użytkownika / Inne",
-        "binary_sensor": "Czujnik binarny 0/1 – DIN / BINARY_SENSOR / ZWAVE",
+        "binary_sensor": "Czujnik binarny 0/1 – DIN / BINARY_SENSOR / ZWAVE / SATEL_INPUT",
         "button": "Skrypt użytkownika"
       }
     },
