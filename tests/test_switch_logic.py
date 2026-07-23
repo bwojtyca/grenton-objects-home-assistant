@@ -108,7 +108,7 @@ async def test_async_turn_on_satel_output():
     await obj.async_turn_on()
 
     assert captured_command["value"] == {
-        "command": "CLU511002420:execute(0, 'SAT7310:execute(2)')"
+        "command": "CLU511002420:execute(0, 'SAT7310:execute(2, 0)')"
     }
     assert obj._state == STATE_ON
     assert obj.is_on is True
@@ -121,7 +121,7 @@ async def test_async_turn_off_satel_output():
     await obj.async_turn_off()
 
     assert captured_command["value"] == {
-        "command": "CLU511002420:execute(0, 'SAT7310:execute(3)')"
+        "command": "CLU511002420:execute(0, 'SAT7310:execute(3, 0)')"
     }
     assert obj._state == STATE_OFF
     assert obj.is_on is not True
@@ -171,7 +171,7 @@ async def test_async_turn_on_reversed_satel_output():
 
     # reversed -> SwitchOff (execute(3)) on HA "on"
     assert captured_command["value"] == {
-        "command": "CLU511002420:execute(0, 'SAT7310:execute(3)')"
+        "command": "CLU511002420:execute(0, 'SAT7310:execute(3, 0)')"
     }
     assert obj.is_on is True
 
