@@ -365,7 +365,12 @@ class GrentonConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required(CONF_OBJECT_NAME, default=defaults.get(CONF_OBJECT_NAME, "")): str,
                 vol.Required(CONF_API_ENDPOINT, default=defaults.get(CONF_API_ENDPOINT, last_api_endpoint)): str,
                 vol.Required(CONF_GRENTON_ID, default=defaults.get(CONF_GRENTON_ID, last_grenton_clu_id + "->DIN0000")): str,
-                vol.Required(CONF_GRENTON_TYPE, default=defaults.get(CONF_GRENTON_TYPE, CONF_GRENTON_TYPE_DIN)): vol.In(BINARY_SENSOR_GRENTON_TYPE_OPTIONS),
+                vol.Required(CONF_GRENTON_TYPE, default=defaults.get(CONF_GRENTON_TYPE, CONF_GRENTON_TYPE_DIN)): SelectSelector(
+                    SelectSelectorConfig(
+                        options=BINARY_SENSOR_GRENTON_TYPE_OPTIONS,
+                        translation_key="binary_sensor_grenton_type"
+                    )
+                ),
                 vol.Optional(CONF_DEVICE_CLASS, description={"suggested_value": defaults.get(CONF_DEVICE_CLASS)}): SelectSelector(
                     SelectSelectorConfig(
                         options=[dc.value for dc in BinarySensorDeviceClass],

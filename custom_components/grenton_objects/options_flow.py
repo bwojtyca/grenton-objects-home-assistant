@@ -82,7 +82,12 @@ class GrentonOptionsFlowHandler(config_entries.OptionsFlow):
             default_type = self.config_entry.options.get(CONF_GRENTON_TYPE, self.config_entry.data.get(CONF_GRENTON_TYPE, CONF_GRENTON_TYPE_DIN))
             default_device_class = self.config_entry.options.get(CONF_DEVICE_CLASS, self.config_entry.data.get(CONF_DEVICE_CLASS))
             data_schema = data_schema.extend({
-                vol.Required(CONF_GRENTON_TYPE, default=default_type): vol.In(BINARY_SENSOR_GRENTON_TYPE_OPTIONS),
+                vol.Required(CONF_GRENTON_TYPE, default=default_type): SelectSelector(
+                    SelectSelectorConfig(
+                        options=BINARY_SENSOR_GRENTON_TYPE_OPTIONS,
+                        translation_key="binary_sensor_grenton_type"
+                    )
+                ),
                 vol.Optional(CONF_DEVICE_CLASS, description={"suggested_value": default_device_class}): SelectSelector(
                     SelectSelectorConfig(
                         options=[dc.value for dc in BinarySensorDeviceClass],

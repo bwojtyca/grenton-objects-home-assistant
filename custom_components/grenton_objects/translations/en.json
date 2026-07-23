@@ -134,6 +134,12 @@
         "button": "User Script"
       }
     },
+    "binary_sensor_grenton_type": {
+      "options": {
+        "DIN": "Digital In (DIN)",
+        "SATEL_INPUT": "Satel input (SatelInput)"
+      }
+    },
     "device_class": {
       "options": {
         "apparent_power": "Apparent Power (VA)",
