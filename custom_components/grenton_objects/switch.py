@@ -15,6 +15,7 @@ from .const import (
     CONF_GRENTON_TYPE,
     CONF_GRENTON_TYPE_DOUT,
     CONF_GRENTON_TYPE_SATEL_OUTPUT,
+    CONF_GRENTON_TYPE_SATEL_ZONE,
     CONF_REVERSED,
     CONF_AUTO_UPDATE,
     CONF_UPDATE_INTERVAL,
@@ -90,9 +91,10 @@ class GrentonSwitch(GrentonPollingMixin, SwitchEntity):
         return False
 
     def _output_command(self, grenton_id_part_0, grenton_id_part_1, physical_on):
-        if self._grenton_type == CONF_GRENTON_TYPE_SATEL_OUTPUT:
-            # SatelOutput runtime execute() indices (verified on hardware): SwitchOn = 0,
-            # SwitchOff = 1. The Object Manager's method-list order does NOT match these indices.
+        if self._grenton_type in (CONF_GRENTON_TYPE_SATEL_OUTPUT, CONF_GRENTON_TYPE_SATEL_ZONE):
+            # Verified on hardware, runtime execute() index 0/1 (NOT the Object Manager list order):
+            #   SatelOutput: 0 = SwitchOn, 1 = SwitchOff
+            #   SatelZone:   0 = ArmZone,  1 = DisarmZone
             index = 0 if physical_on else 1
             return {"command": f"{grenton_id_part_0}:execute(0, '{grenton_id_part_1}:execute({index})')"}
         value = 1 if physical_on else 0

@@ -191,3 +191,44 @@ async def test_async_force_state_reversed():
     assert obj._state == STATE_OFF
     await obj.async_force_state(0)
     assert obj._state == STATE_ON
+
+# --- SatelZone (switch): ArmZone = execute(0), DisarmZone = execute(1), read get(0) ---
+
+@pytest.mark.asyncio
+async def test_async_turn_on_satel_zone():
+    captured_command = {}
+    obj = create_obj(grenton_id="CLU511002420->SAT8510", grenton_type="SATEL_ZONE", response_data={"status": "ok"}, captured_command=captured_command)
+    await obj.async_turn_on()
+
+    # HA on -> ArmZone = execute(0)
+    assert captured_command["value"] == {
+        "command": "CLU511002420:execute(0, 'SAT8510:execute(0)')"
+    }
+    assert obj._state == STATE_ON
+    assert obj.is_on is True
+    assert obj.unique_id == "grenton_SAT8510"
+
+@pytest.mark.asyncio
+async def test_async_turn_off_satel_zone():
+    captured_command = {}
+    obj = create_obj(grenton_id="CLU511002420->SAT8510", grenton_type="SATEL_ZONE", response_data={"status": "ok"}, captured_command=captured_command)
+    await obj.async_turn_off()
+
+    # HA off -> DisarmZone = execute(1)
+    assert captured_command["value"] == {
+        "command": "CLU511002420:execute(0, 'SAT8510:execute(1)')"
+    }
+    assert obj._state == STATE_OFF
+    assert obj.is_on is not True
+
+@pytest.mark.asyncio
+async def test_async_update_satel_zone():
+    captured_command = {}
+    obj = create_obj(grenton_id="CLU511002420->SAT8510", grenton_type="SATEL_ZONE", response_data={"status": 1}, captured_command=captured_command)
+    await obj.async_update()
+
+    assert captured_command["value"] == {
+        "status": "return CLU511002420:execute(0, 'SAT8510:get(0)')"
+    }
+    assert obj._state == STATE_ON
+    assert obj.is_on is True

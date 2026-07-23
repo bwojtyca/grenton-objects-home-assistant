@@ -22,7 +22,7 @@
       },
       "switch_config": {
         "title": "Typ urządzenia: Przełącznik",
-        "description": "Uwaga! Zwróć uwagę, czy adres IP oraz Path w URL są poprawne.\n\nUwaga! Wpisz pełne ID obiektu Grenton, które znajduje się we właściwościach obiektu, pod nazwą, w polu Id.\n\nUwaga! Dla standardowego wyjścia (DOUT / ZWAVE) zostaw typ DOUT. Dla wyjścia alarmu Satel wybierz SATEL_OUTPUT.",
+        "description": "Uwaga! Zwróć uwagę, czy adres IP oraz Path w URL są poprawne.\n\nUwaga! Wpisz pełne ID obiektu Grenton, które znajduje się we właściwościach obiektu, pod nazwą, w polu Id.\n\nUwaga! Dla standardowego wyjścia (DOUT / ZWAVE) zostaw typ DOUT. Dla wyjścia alarmu Satel wybierz SATEL_OUTPUT, a dla strefy alarmu Satel (uzbrój/rozbrój) wybierz SATEL_ZONE.",
         "data": {
           "name": "Nazwa obiektu",
           "api_endpoint": "Adres URL do Grenton HTTP Listener",
@@ -128,7 +128,7 @@
     "device_type": {
       "options": {
         "light": "Światło – DOUT / DIMMER / LED / ZWAVE",
-        "switch": "Przełącznik – DOUT / ZWAVE / SATEL_OUTPUT",
+        "switch": "Przełącznik – DOUT / ZWAVE / SATEL_OUTPUT / SATEL_ZONE",
         "cover": "Rolety – ROLLER_SHUTTER / ZWAVE",
         "climate": "Klimat – THERMOSTAT",
         "sensor": "Czujnik – ONE_WIRE / TEMPERATURE / ANALOG IN / MODBUS / ZWAVE / Cecha użytkownika / Inne",
@@ -145,7 +145,8 @@
     "switch_grenton_type": {
       "options": {
         "DOUT": "Wyjście cyfrowe (DOUT)",
-        "SATEL_OUTPUT": "Wyjście Satel (SatelOutput)"
+        "SATEL_OUTPUT": "Wyjście Satel (SatelOutput)",
+        "SATEL_ZONE": "Strefa Satel (SatelZone) — uzbrój/rozbrój"
       }
     },
     "device_class": {
