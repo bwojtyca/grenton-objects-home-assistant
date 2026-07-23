@@ -17,9 +17,11 @@ from .const import (
     CONF_REVERSED,
     CONF_GRENTON_TYPE,
     CONF_GRENTON_TYPE_DIN,
+    CONF_GRENTON_TYPE_DOUT,
     LIGHT_GRENTON_TYPE_OPTIONS,
     SENSOR_GRENTON_TYPE_OPTIONS,
     BINARY_SENSOR_GRENTON_TYPE_OPTIONS,
+    SWITCH_GRENTON_TYPE_OPTIONS,
     CONF_DEVICE_CLASS,
     CONF_MIN_VALUE,
     CONF_MAX_VALUE
@@ -56,6 +58,16 @@ class GrentonOptionsFlowHandler(config_entries.OptionsFlow):
             default_type = self.config_entry.options.get(CONF_GRENTON_TYPE, self.config_entry.data.get(CONF_GRENTON_TYPE))
             data_schema = data_schema.extend({
                 vol.Required(CONF_GRENTON_TYPE, default=default_type): vol.In(LIGHT_GRENTON_TYPE_OPTIONS)
+            })
+        elif device_type == "switch":
+            default_type = self.config_entry.options.get(CONF_GRENTON_TYPE, self.config_entry.data.get(CONF_GRENTON_TYPE, CONF_GRENTON_TYPE_DOUT))
+            data_schema = data_schema.extend({
+                vol.Required(CONF_GRENTON_TYPE, default=default_type): SelectSelector(
+                    SelectSelectorConfig(
+                        options=SWITCH_GRENTON_TYPE_OPTIONS,
+                        translation_key="switch_grenton_type"
+                    )
+                )
             })
         elif device_type == "cover":
             default_reversed = self.config_entry.options.get(CONF_REVERSED, self.config_entry.data.get(CONF_REVERSED))

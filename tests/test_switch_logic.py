@@ -4,7 +4,7 @@ from homeassistant.const import STATE_ON, STATE_OFF
 from tests.helpers import MockApiClient, MockHass
 
 
-def create_obj(grenton_id="CLU220000000->DIN0000", response_data=None, captured_command=None):
+def create_obj(grenton_id="CLU220000000->DIN0000", grenton_type="DOUT", response_data=None, captured_command=None):
     if response_data is None:
         response_data = {"status": 1}
     api_client = MockApiClient(response_data=response_data, captured_command=captured_command)
@@ -12,6 +12,7 @@ def create_obj(grenton_id="CLU220000000->DIN0000", response_data=None, captured_
         api_endpoint="http://fake-api",
         grenton_id=grenton_id,
         object_name="Test Sensor",
+        grenton_type=grenton_type,
         auto_update=False,
         update_interval=5,
         api_client=api_client
@@ -96,3 +97,42 @@ async def test_async_update_keeps_state_and_goes_unavailable_after_failures():
     await obj.async_update()
     assert obj.available is False
     assert obj.is_on is True                # state retained while unavailable
+
+# --- SatelOutput (switch): SwitchOn = execute(2), SwitchOff = execute(3), read get(0) ---
+
+@pytest.mark.asyncio
+async def test_async_turn_on_satel_output():
+    captured_command = {}
+    obj = create_obj(grenton_id="CLU511002420->SAT7310", grenton_type="SATEL_OUTPUT", response_data={"status": "ok"}, captured_command=captured_command)
+    await obj.async_turn_on()
+
+    assert captured_command["value"] == {
+        "command": "CLU511002420:execute(0, 'SAT7310:execute(2)')"
+    }
+    assert obj._state == STATE_ON
+    assert obj.is_on is True
+    assert obj.unique_id == "grenton_SAT7310"
+
+@pytest.mark.asyncio
+async def test_async_turn_off_satel_output():
+    captured_command = {}
+    obj = create_obj(grenton_id="CLU511002420->SAT7310", grenton_type="SATEL_OUTPUT", response_data={"status": "ok"}, captured_command=captured_command)
+    await obj.async_turn_off()
+
+    assert captured_command["value"] == {
+        "command": "CLU511002420:execute(0, 'SAT7310:execute(3)')"
+    }
+    assert obj._state == STATE_OFF
+    assert obj.is_on is not True
+
+@pytest.mark.asyncio
+async def test_async_update_satel_output():
+    captured_command = {}
+    obj = create_obj(grenton_id="CLU511002420->SAT7310", grenton_type="SATEL_OUTPUT", response_data={"status": 1}, captured_command=captured_command)
+    await obj.async_update()
+
+    assert captured_command["value"] == {
+        "status": "return CLU511002420:execute(0, 'SAT7310:get(0)')"
+    }
+    assert obj._state == STATE_ON
+    assert obj.is_on is True

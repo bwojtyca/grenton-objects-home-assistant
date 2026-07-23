@@ -70,6 +70,7 @@ def create_switch(response_data=None, current_time=100.0):
         api_endpoint="http://fake-api",
         grenton_id="CLU220000000->DOU0000",
         object_name="Test Switch",
+        grenton_type="DOUT",
         auto_update=False,
         update_interval=5,
         api_client=api_client,

@@ -12,8 +12,11 @@ from .const import (
     CONF_API_ENDPOINT,
     CONF_GRENTON_ID,
     CONF_OBJECT_NAME,
+    CONF_GRENTON_TYPE,
+    CONF_GRENTON_TYPE_DOUT,
+    CONF_GRENTON_TYPE_SATEL_OUTPUT,
     CONF_AUTO_UPDATE,
-    CONF_UPDATE_INTERVAL, 
+    CONF_UPDATE_INTERVAL,
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN
 )
@@ -33,11 +36,12 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     api_endpoint = config_entry.options.get(CONF_API_ENDPOINT, config_entry.data.get(CONF_API_ENDPOINT))
     grenton_id = config_entry.data.get(CONF_GRENTON_ID)
     object_name = config_entry.data.get(CONF_OBJECT_NAME)
+    grenton_type = config_entry.options.get(CONF_GRENTON_TYPE, config_entry.data.get(CONF_GRENTON_TYPE, CONF_GRENTON_TYPE_DOUT))
     auto_update = config_entry.options.get(CONF_AUTO_UPDATE, config_entry.data.get(CONF_AUTO_UPDATE, True))
     update_interval = config_entry.options.get(CONF_UPDATE_INTERVAL, config_entry.data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL))
 
     api_client = get_api_client(hass, api_endpoint)
-    entity = GrentonSwitch(api_endpoint, grenton_id, object_name, auto_update, update_interval, api_client)
+    entity = GrentonSwitch(api_endpoint, grenton_id, object_name, grenton_type, auto_update, update_interval, api_client)
     async_add_entities([entity], True)
 
     if DOMAIN not in hass.data:
@@ -46,10 +50,11 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     hass.data[DOMAIN]["entities"][entity.entity_id] = entity
 
 class GrentonSwitch(GrentonPollingMixin, SwitchEntity):
-    def __init__(self, api_endpoint, grenton_id, object_name, auto_update, update_interval, api_client):
+    def __init__(self, api_endpoint, grenton_id, object_name, grenton_type, auto_update, update_interval, api_client):
         self._api_endpoint = api_endpoint
         self._grenton_id = grenton_id
         self._object_name = object_name
+        self._grenton_type = grenton_type
         self._state = None
         self._unique_id = f"grenton_{grenton_id.split('->')[1]}"
         self._last_command_time = None
@@ -82,7 +87,11 @@ class GrentonSwitch(GrentonPollingMixin, SwitchEntity):
     async def async_turn_on(self, **kwargs):
         try:
             grenton_id_part_0, grenton_id_part_1 = self._grenton_id.split('->')
-            command = {"command": f"{grenton_id_part_0}:execute(0, '{grenton_id_part_1}:set(0, 1)')"}
+            if self._grenton_type == CONF_GRENTON_TYPE_SATEL_OUTPUT:
+                # SatelOutput method index 2 = SwitchOn (no params)
+                command = {"command": f"{grenton_id_part_0}:execute(0, '{grenton_id_part_1}:execute(2)')"}
+            else:
+                command = {"command": f"{grenton_id_part_0}:execute(0, '{grenton_id_part_1}:set(0, 1)')"}
             self._state = STATE_ON
             self._last_command_time = self.hass.loop.time() if self.hass is not None else None
             self.async_write_ha_state()
@@ -94,7 +103,11 @@ class GrentonSwitch(GrentonPollingMixin, SwitchEntity):
     async def async_turn_off(self, **kwargs):
         try:
             grenton_id_part_0, grenton_id_part_1 = self._grenton_id.split('->')
-            command = {"command": f"{grenton_id_part_0}:execute(0, '{grenton_id_part_1}:set(0, 0)')"}
+            if self._grenton_type == CONF_GRENTON_TYPE_SATEL_OUTPUT:
+                # SatelOutput method index 3 = SwitchOff (no params)
+                command = {"command": f"{grenton_id_part_0}:execute(0, '{grenton_id_part_1}:execute(3)')"}
+            else:
+                command = {"command": f"{grenton_id_part_0}:execute(0, '{grenton_id_part_1}:set(0, 0)')"}
             self._state = STATE_OFF
             self._last_command_time = self.hass.loop.time() if self.hass is not None else None
             self.async_write_ha_state()

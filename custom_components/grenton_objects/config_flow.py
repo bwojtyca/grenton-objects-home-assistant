@@ -21,6 +21,7 @@ from .const import (
     CONF_GRENTON_TYPE_RELAY_POWER,
     CONF_GRENTON_TYPE_DIN,
     BINARY_SENSOR_GRENTON_TYPE_OPTIONS,
+    SWITCH_GRENTON_TYPE_OPTIONS,
     CONF_DEVICE_CLASS,
     CONF_STATE_CLASS,
     CONF_MIN_VALUE,
@@ -148,10 +149,11 @@ class GrentonConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             CONF_API_ENDPOINT: user_input[CONF_API_ENDPOINT],
             CONF_GRENTON_ID: user_input[CONF_GRENTON_ID],
             CONF_OBJECT_NAME: user_input[CONF_OBJECT_NAME],
+            CONF_GRENTON_TYPE: user_input.get(CONF_GRENTON_TYPE, CONF_GRENTON_TYPE_DOUT),
             CONF_AUTO_UPDATE: user_input[CONF_AUTO_UPDATE],
             CONF_UPDATE_INTERVAL: user_input[CONF_UPDATE_INTERVAL]
         })
-    
+
     async def async_step_cover_config(self, user_input=None):
         if user_input is None:
             return self.async_show_form(
@@ -312,6 +314,12 @@ class GrentonConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required(CONF_OBJECT_NAME, default=defaults.get(CONF_OBJECT_NAME, "")): str,
                 vol.Required(CONF_API_ENDPOINT, default=defaults.get(CONF_API_ENDPOINT, last_api_endpoint)): str,
                 vol.Required(CONF_GRENTON_ID, default=defaults.get(CONF_GRENTON_ID, last_grenton_clu_id + "->DOU0000")): str,
+                vol.Required(CONF_GRENTON_TYPE, default=defaults.get(CONF_GRENTON_TYPE, CONF_GRENTON_TYPE_DOUT)): SelectSelector(
+                    SelectSelectorConfig(
+                        options=SWITCH_GRENTON_TYPE_OPTIONS,
+                        translation_key="switch_grenton_type"
+                    )
+                ),
                 vol.Required(CONF_AUTO_UPDATE, default=defaults.get(CONF_AUTO_UPDATE, True)): bool,
                 vol.Required(CONF_UPDATE_INTERVAL, default=defaults.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)): vol.All(vol.Coerce(int), vol.Range(min=5, max=3600))
             })

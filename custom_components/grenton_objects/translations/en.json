@@ -22,11 +22,12 @@
       },
       "switch_config": {
         "title": "Device Type: Switch",
-        "description": "Note! Ensure that the IP address and Path in the URL are correct.\n\nNote! Enter the full Grenton object ID, which can be found in the object properties under the name, in the Id field.",
+        "description": "Note! Ensure that the IP address and Path in the URL are correct.\n\nNote! Enter the full Grenton object ID, which can be found in the object properties under the name, in the Id field.\n\nNote! For a standard output (DOUT / ZWAVE) keep the DOUT type. For a Satel alarm output select SATEL_OUTPUT.",
         "data": {
           "name": "Object Name",
           "api_endpoint": "URL to Grenton HTTP Listener",
           "grenton_id": "Grenton Object ID",
+          "grenton_type": "Grenton Object Type",
           "auto_update": "Automatic Object Updates",
           "update_interval": "Refresh Interval (in seconds)"
         }
@@ -126,7 +127,7 @@
     "device_type": {
       "options": {
         "light": "Light – DOUT / DIMMER / LED / ZWAVE",
-        "switch": "Switch – DOUT / ZWAVE",
+        "switch": "Switch – DOUT / ZWAVE / SATEL_OUTPUT",
         "cover": "Cover – ROLLER_SHUTTER / ZWAVE",
         "climate": "Climate – THERMOSTAT",
         "sensor": "Sensor – ONE_WIRE / TEMPERATURE / ANALOG IN / MODBUS / ZWAVE / User Feature / Inne",
@@ -138,6 +139,12 @@
       "options": {
         "DIN": "Digital In (DIN)",
         "SATEL_INPUT": "Satel input (SatelInput)"
+      }
+    },
+    "switch_grenton_type": {
+      "options": {
+        "DOUT": "Digital Out (DOUT)",
+        "SATEL_OUTPUT": "Satel output (SatelOutput)"
       }
     },
     "device_class": {
