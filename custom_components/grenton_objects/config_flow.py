@@ -19,6 +19,8 @@ from .const import (
     CONF_GRENTON_TYPE_DOUT,
     CONF_GRENTON_TYPE_DEFAULT_SENSOR,
     CONF_GRENTON_TYPE_RELAY_POWER,
+    CONF_GRENTON_TYPE_DIN,
+    BINARY_SENSOR_GRENTON_TYPE_OPTIONS,
     CONF_DEVICE_CLASS,
     CONF_STATE_CLASS,
     CONF_MIN_VALUE,
@@ -261,6 +263,7 @@ class GrentonConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             CONF_API_ENDPOINT: user_input[CONF_API_ENDPOINT],
             CONF_GRENTON_ID: user_input[CONF_GRENTON_ID],
             CONF_OBJECT_NAME: user_input[CONF_OBJECT_NAME],
+            CONF_GRENTON_TYPE: user_input.get(CONF_GRENTON_TYPE, CONF_GRENTON_TYPE_DIN),
             CONF_DEVICE_CLASS: user_input.get(CONF_DEVICE_CLASS),
             CONF_AUTO_UPDATE: user_input[CONF_AUTO_UPDATE],
             CONF_UPDATE_INTERVAL: user_input[CONF_UPDATE_INTERVAL]
@@ -362,6 +365,7 @@ class GrentonConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required(CONF_OBJECT_NAME, default=defaults.get(CONF_OBJECT_NAME, "")): str,
                 vol.Required(CONF_API_ENDPOINT, default=defaults.get(CONF_API_ENDPOINT, last_api_endpoint)): str,
                 vol.Required(CONF_GRENTON_ID, default=defaults.get(CONF_GRENTON_ID, last_grenton_clu_id + "->DIN0000")): str,
+                vol.Required(CONF_GRENTON_TYPE, default=defaults.get(CONF_GRENTON_TYPE, CONF_GRENTON_TYPE_DIN)): vol.In(BINARY_SENSOR_GRENTON_TYPE_OPTIONS),
                 vol.Optional(CONF_DEVICE_CLASS, description={"suggested_value": defaults.get(CONF_DEVICE_CLASS)}): SelectSelector(
                     SelectSelectorConfig(
                         options=[dc.value for dc in BinarySensorDeviceClass],

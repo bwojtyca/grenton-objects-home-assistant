@@ -12,6 +12,8 @@ from .const import (
     CONF_API_ENDPOINT,
     CONF_GRENTON_ID,
     CONF_OBJECT_NAME,
+    CONF_GRENTON_TYPE,
+    CONF_GRENTON_TYPE_DIN,
     CONF_DEVICE_CLASS,
     CONF_AUTO_UPDATE,
     CONF_UPDATE_INTERVAL,
@@ -32,12 +34,13 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     api_endpoint = config_entry.options.get(CONF_API_ENDPOINT, config_entry.data.get(CONF_API_ENDPOINT))
     grenton_id = config_entry.data.get(CONF_GRENTON_ID)
     object_name = config_entry.data.get(CONF_OBJECT_NAME)
+    grenton_type = config_entry.options.get(CONF_GRENTON_TYPE, config_entry.data.get(CONF_GRENTON_TYPE, CONF_GRENTON_TYPE_DIN))
     device_class = config_entry.options.get(CONF_DEVICE_CLASS, config_entry.data.get(CONF_DEVICE_CLASS))
     auto_update = config_entry.options.get(CONF_AUTO_UPDATE, config_entry.data.get(CONF_AUTO_UPDATE, True))
     update_interval = config_entry.options.get(CONF_UPDATE_INTERVAL, config_entry.data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL))
 
     api_client = get_api_client(hass, api_endpoint)
-    entity = GrentonBinarySensor(api_endpoint, grenton_id, object_name, device_class, auto_update, update_interval, api_client)
+    entity = GrentonBinarySensor(api_endpoint, grenton_id, object_name, grenton_type, device_class, auto_update, update_interval, api_client)
     async_add_entities([entity], True)
     
     if DOMAIN not in hass.data:
@@ -46,10 +49,11 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     hass.data[DOMAIN]["entities"][entity.entity_id] = entity
 
 class GrentonBinarySensor(GrentonPollingMixin, BinarySensorEntity):
-    def __init__(self, api_endpoint, grenton_id, object_name, device_class, auto_update, update_interval, api_client):
+    def __init__(self, api_endpoint, grenton_id, object_name, grenton_type, device_class, auto_update, update_interval, api_client):
         self._api_endpoint = api_endpoint
         self._grenton_id = grenton_id
         self._object_name = object_name
+        self._grenton_type = grenton_type
         self._device_class = device_class or None
         self._unique_id = f"grenton_{grenton_id.split('->')[1]}"
         self._state = None
@@ -73,6 +77,8 @@ class GrentonBinarySensor(GrentonPollingMixin, BinarySensorEntity):
 
     @property
     def is_on(self):
+        if self._state is None:
+            return None
         return self._state == STATE_ON
 
     @property
@@ -92,7 +98,14 @@ class GrentonBinarySensor(GrentonPollingMixin, BinarySensorEntity):
             command = {"status": f"return {grenton_id_part_0}:execute(0, '{grenton_id_part_1}:get(0)')"}
             data = await self._api_client.get_status(command)
             self._handle_update_success()
-            self._state = STATE_OFF if data.get("status") == 0 else STATE_ON
+            status = data.get("status")
+            if status == -1:
+                # Satel objects report -1 when the state is not yet known; keep it unknown
+                self._state = None
+            elif status == 0:
+                self._state = STATE_OFF
+            else:
+                self._state = STATE_ON
             self.async_write_ha_state()
         except (aiohttp.ClientError, GrentonApiError) as ex:
             self._handle_update_failure(ex)

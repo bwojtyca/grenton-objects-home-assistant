@@ -73,11 +73,12 @@
       },
       "binary_sensor_config": {
         "title": "Typ urządzenia: Czujnik binarny 0/1",
-        "description": "Uwaga! Zwróć uwagę, czy adres IP oraz Path w URL są poprawne.\n\nUwaga! Wpisz pełne ID obiektu Grenton, które znajduje się we właściwościach obiektu, pod nazwą, w polu Id.",
+        "description": "Uwaga! Zwróć uwagę, czy adres IP oraz Path w URL są poprawne.\n\nUwaga! Wpisz pełne ID obiektu Grenton, które znajduje się we właściwościach obiektu, pod nazwą, w polu Id.\n\nUwaga! Dla standardowego wejścia cyfrowego (DIN / BINARY_SENSOR / ZWAVE) zostaw typ DIN. Dla wejścia alarmu Satel wybierz SATEL_INPUT (obsługiwany jest jego stan -1 = nieznany).",
         "data": {
           "name": "Nazwa obiektu",
           "api_endpoint": "Adres URL do Grenton HTTP Listener",
           "grenton_id": "ID obiektu Grenton",
+          "grenton_type": "Typ obiektu Grenton",
           "device_class": "Klasa urządzenia (opcjonalnie)",
           "auto_update": "Automatyczna aktualizacja obiektu",
           "update_interval": "Okres odświeżania (w sekundach)"

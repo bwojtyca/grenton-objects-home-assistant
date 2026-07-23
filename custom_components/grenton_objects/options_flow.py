@@ -16,8 +16,10 @@ from .const import (
     DEFAULT_UPDATE_INTERVAL,
     CONF_REVERSED,
     CONF_GRENTON_TYPE,
+    CONF_GRENTON_TYPE_DIN,
     LIGHT_GRENTON_TYPE_OPTIONS,
     SENSOR_GRENTON_TYPE_OPTIONS,
+    BINARY_SENSOR_GRENTON_TYPE_OPTIONS,
     CONF_DEVICE_CLASS,
     CONF_MIN_VALUE,
     CONF_MAX_VALUE
@@ -77,8 +79,10 @@ class GrentonOptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Optional(CONF_MAX_VALUE, description={"suggested_value": default_max}): vol.Coerce(float)
             })
         elif device_type == "binary_sensor":
+            default_type = self.config_entry.options.get(CONF_GRENTON_TYPE, self.config_entry.data.get(CONF_GRENTON_TYPE, CONF_GRENTON_TYPE_DIN))
             default_device_class = self.config_entry.options.get(CONF_DEVICE_CLASS, self.config_entry.data.get(CONF_DEVICE_CLASS))
             data_schema = data_schema.extend({
+                vol.Required(CONF_GRENTON_TYPE, default=default_type): vol.In(BINARY_SENSOR_GRENTON_TYPE_OPTIONS),
                 vol.Optional(CONF_DEVICE_CLASS, description={"suggested_value": default_device_class}): SelectSelector(
                     SelectSelectorConfig(
                         options=[dc.value for dc in BinarySensorDeviceClass],
