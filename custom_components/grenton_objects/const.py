@@ -55,7 +55,8 @@ DEVICE_TYPE_OPTIONS = [
     "climate",
     "sensor",
     "binary_sensor",
-    "button"
+    "button",
+    "alarm_control_panel"
 ]
 
 DEVICE_CLASS_OPTIONS = [

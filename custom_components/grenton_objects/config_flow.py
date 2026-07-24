@@ -80,7 +80,9 @@ class GrentonConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return await self.async_step_binary_sensor_config()
         elif self.device_type == "button":
             return await self.async_step_button_config()
-        
+        elif self.device_type == "alarm_control_panel":
+            return await self.async_step_alarm_control_panel_config()
+
     def _persist_last_inputs(self, user_input: dict) -> None:
         self.hass.data[f"{DOMAIN}_last_api_endpoint"] = user_input[CONF_API_ENDPOINT]
 
@@ -307,7 +309,32 @@ class GrentonConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             CONF_GRENTON_ID: user_input[CONF_GRENTON_ID],
             CONF_OBJECT_NAME: user_input[CONF_OBJECT_NAME]
         })
-        
+
+    async def async_step_alarm_control_panel_config(self, user_input=None):
+        if user_input is None:
+            return self.async_show_form(
+                step_id="alarm_control_panel_config",
+                data_schema=self._get_device_schema(user_input)
+            )
+
+        if self._is_duplicate_grenton_id(user_input[CONF_GRENTON_ID]):
+            return self.async_show_form(
+                step_id="alarm_control_panel_config",
+                data_schema=self._get_device_schema(user_input),
+                errors={"base": "duplicate_grenton_id"}
+            )
+
+        self._persist_last_inputs(user_input)
+
+        return self.async_create_entry(title=user_input[CONF_OBJECT_NAME], data={
+            "device_type": self.device_type,
+            CONF_API_ENDPOINT: user_input[CONF_API_ENDPOINT],
+            CONF_GRENTON_ID: user_input[CONF_GRENTON_ID],
+            CONF_OBJECT_NAME: user_input[CONF_OBJECT_NAME],
+            CONF_AUTO_UPDATE: user_input[CONF_AUTO_UPDATE],
+            CONF_UPDATE_INTERVAL: user_input[CONF_UPDATE_INTERVAL]
+        })
+
     def _get_device_schema(self, user_input=None):
         last_api_endpoint = self._default_api_endpoint()
 
@@ -408,7 +435,15 @@ class GrentonConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required(CONF_API_ENDPOINT, default=defaults.get(CONF_API_ENDPOINT, last_api_endpoint)): str,
                 vol.Required(CONF_GRENTON_ID, description={"suggested_value": defaults.get(CONF_GRENTON_ID)}): str
             })
-    
+        elif self.device_type == "alarm_control_panel":
+            return vol.Schema({
+                vol.Required(CONF_OBJECT_NAME, default=defaults.get(CONF_OBJECT_NAME, "")): str,
+                vol.Required(CONF_API_ENDPOINT, default=defaults.get(CONF_API_ENDPOINT, last_api_endpoint)): str,
+                vol.Required(CONF_GRENTON_ID, description={"suggested_value": defaults.get(CONF_GRENTON_ID)}): str,
+                vol.Required(CONF_AUTO_UPDATE, default=defaults.get(CONF_AUTO_UPDATE, True)): bool,
+                vol.Required(CONF_UPDATE_INTERVAL, default=defaults.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)): vol.All(vol.Coerce(int), vol.Range(min=5, max=3600))
+            })
+
     @staticmethod
     @callback
     def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> GrentonOptionsFlowHandler:

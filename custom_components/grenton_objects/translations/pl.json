@@ -94,6 +94,17 @@
           "api_endpoint": "Adres URL do Grenton HTTP Listener",
           "grenton_id": "ID obiektu Grenton"
         }
+      },
+      "alarm_control_panel_config": {
+        "title": "Typ urządzenia: Alarm (strefa Satel)",
+        "description": "Uwaga! Zwróć uwagę, czy adres IP oraz Path w URL są poprawne.\n\nUwaga! Wpisz pełne ID obiektu SatelZone.\n\nUwaga! Uzbrajanie/rozbrajanie używa kodu użytkownika skonfigurowanego po stronie Grenton/Satel - w Home Assistant nie trzeba podawać kodu.",
+        "data": {
+          "name": "Nazwa obiektu",
+          "api_endpoint": "Adres URL do Grenton HTTP Listener",
+          "grenton_id": "ID obiektu Grenton",
+          "auto_update": "Automatyczna aktualizacja obiektu",
+          "update_interval": "Okres odświeżania (w sekundach)"
+        }
       }
     },
     "error": {
@@ -133,7 +144,8 @@
         "climate": "Klimat – THERMOSTAT",
         "sensor": "Czujnik – ONE_WIRE / TEMPERATURE / ANALOG IN / MODBUS / ZWAVE / Cecha użytkownika / Inne",
         "binary_sensor": "Czujnik binarny 0/1 – DIN / BINARY_SENSOR / ZWAVE / SATEL_INPUT",
-        "button": "Skrypt użytkownika"
+        "button": "Skrypt użytkownika",
+        "alarm_control_panel": "Alarm – strefa Satel (SatelZone)"
       }
     },
     "binary_sensor_grenton_type": {
