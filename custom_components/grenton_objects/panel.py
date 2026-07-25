@@ -27,20 +27,18 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-PANEL_URL_PATH = DOMAIN  # matches config_panel_domain, opened from the integration page
+PANEL_URL_PATH = DOMAIN  # sidebar panel frontend path
 PANEL_JS_URL = "/grenton_objects_frontend/panel.js"
 PANEL_ELEMENT = "grenton-objects-panel"
 _REGISTERED_FLAG = f"{DOMAIN}_panel_registered"
 
 
 async def async_setup_panel(hass: HomeAssistant) -> None:
-    """Register the static frontend, the websocket command and the config panel.
+    """Register the static frontend, the websocket command and the sidebar panel.
 
-    The panel is registered as the integration's *config panel*
-    (``config_panel_domain``) and without a sidebar title, so it does NOT appear
-    in the sidebar by default — it is opened from the integration's page in
-    Settings → Devices & services. (Users can still pin it to the sidebar via
-    "Edit sidebar" if they want.) This mirrors how lcn / dynalite / insteon do it.
+    Registered as a normal sidebar panel (NOT via ``config_panel_domain``): for a
+    multi-entry integration that would hijack each entry's gear/"Configure" and
+    suppress the per-entry options flow, so it is deliberately avoided.
     """
     if hass.data.get(_REGISTERED_FLAG):
         return
@@ -61,7 +59,8 @@ async def async_setup_panel(hass: HomeAssistant) -> None:
             module_url=PANEL_JS_URL,
             embed_iframe=False,
             require_admin=True,
-            config_panel_domain=DOMAIN,
+            sidebar_title="Grenton",
+            sidebar_icon="mdi:home-automation",
         )
 
 

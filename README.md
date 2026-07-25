@@ -148,7 +148,7 @@ Notes:
 
 ## OM project analysis
 
-The integration adds a project-analysis page, opened from its own page in `Settings` → `Devices & services` → **Grenton Objects** (it is not shown in the sidebar by default; you can pin it there via *Edit sidebar* if you like). There you can upload your Object Manager project file (`.omp`) and see how it lines up with what is actually configured in Home Assistant — read-only, nothing is changed.
+The integration adds a **Grenton** page to the Home Assistant sidebar. There you can upload your Object Manager project file (`.omp`) and see how it lines up with what is actually configured in Home Assistant — read-only, nothing is changed.
 
 Upload your `.omp`, and the report covers:
 
