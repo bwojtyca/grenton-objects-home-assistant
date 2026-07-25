@@ -38,6 +38,16 @@ const SEV_COLOR = {
   muted: "var(--secondary-text-color, #888)",
 };
 
+// Concrete hex per severity — ha-label needs a hex `color` (it derives a
+// contrasting text color from it), so CSS vars can't be used here.
+const SEV_HEX = {
+  error: "#db4437",
+  warn: "#f9a825",
+  missing: "#3d70b2",
+  ok: "#43a047",
+  muted: "#9e9e9e",
+};
+
 function statusInfo(row) {
   if (row.flags.includes("orphan")) return { label: "Błąd: brak w projekcie", sev: "error", cat: "problem" };
   if (row.flags.includes("push_wrong_object")) return { label: "Błąd: push ze złego obiektu", sev: "error", cat: "problem" };
@@ -72,7 +82,7 @@ function toBase64(buffer) {
 }
 
 async function ensureHaComponents() {
-  const want = ["ha-card", "ha-alert", "ha-data-table", "ha-expansion-panel", "ha-label", "state-badge", "ha-textfield", "ha-icon"];
+  const want = ["ha-card", "ha-alert", "ha-data-table", "ha-expansion-panel", "ha-label", "state-badge", "ha-textfield", "ha-icon", "ha-list-selectable", "ha-list-item-option"];
   if (want.every((tag) => customElements.get(tag))) return;
   try {
     if (window.loadCardHelpers) {
@@ -395,16 +405,27 @@ class GrentonObjectsPanel extends HTMLElement {
     return counts;
   }
 
-  // One collapsible filter group (ha-expansion-panel with a checkbox list),
-  // like the ha-filter-* panels on the config subpages.
+  // One collapsible filter group (ha-expansion-panel with a native
+  // ha-list-selectable checkbox list), like the ha-filter-* panels on the
+  // config subpages. Falls back to plain checkboxes if the list component is
+  // not loaded.
   _filterGroup(labelText, items, enabledSet, withSelectAll) {
+    const header = document.createElement("span");
+    header.setAttribute("slot", "header");
+    const updateHeader = () => {
+      const sel = items.filter((it) => enabledSet.has(it.key)).length;
+      header.textContent = `${labelText} (${sel}/${items.length})`;
+    };
+
     const content = document.createElement("div");
-    content.style.cssText = "padding:4px 8px 12px;display:flex;flex-direction:column;gap:6px;max-height:320px;overflow:auto";
-    const cbs = [];
+    content.style.cssText = "padding:4px 4px 12px;display:flex;flex-direction:column;gap:4px;max-height:340px;overflow:auto";
+
+    const useList = customElements.get("ha-list-selectable") && customElements.get("ha-list-item-option");
+    const options = [];
 
     if (withSelectAll) {
       const btnRow = document.createElement("div");
-      btnRow.style.cssText = "display:flex;gap:8px;margin-bottom:2px";
+      btnRow.style.cssText = "display:flex;gap:8px;margin:0 4px 4px";
       const mk = (text, on) => {
         const b = document.createElement("button");
         b.textContent = text;
@@ -414,7 +435,8 @@ class GrentonObjectsPanel extends HTMLElement {
         b.addEventListener("click", () => {
           enabledSet.clear();
           if (on) items.forEach((it) => enabledSet.add(it.key));
-          cbs.forEach((cb, i) => { cb.checked = enabledSet.has(items[i].key); });
+          options.forEach((o, i) => { o.selected = enabledSet.has(items[i].key); });
+          updateHeader();
           this._applyFilter();
         });
         return b;
@@ -423,29 +445,54 @@ class GrentonObjectsPanel extends HTMLElement {
       content.appendChild(btnRow);
     }
 
-    items.forEach((it) => {
-      const label = document.createElement("label");
-      label.style.cssText = "display:flex;align-items:center;gap:8px;cursor:pointer;white-space:nowrap";
-      const cb = document.createElement("input");
-      cb.type = "checkbox";
-      cb.checked = enabledSet.has(it.key);
-      cb.addEventListener("change", () => {
-        if (cb.checked) enabledSet.add(it.key); else enabledSet.delete(it.key);
-        this._applyFilter();
+    if (useList) {
+      const list = document.createElement("ha-list-selectable");
+      list.setAttribute("multi", "");
+      items.forEach((it) => {
+        const opt = document.createElement("ha-list-item-option");
+        opt.setAttribute("appearance", "checkbox");
+        opt.setAttribute("selection-position", "start");
+        opt.value = it.key;
+        opt.selected = enabledSet.has(it.key);
+        const hl = document.createElement("span");
+        hl.setAttribute("slot", "headline");
+        hl.textContent = it.label;
+        opt.appendChild(hl);
+        options.push(opt);
+        list.appendChild(opt);
       });
-      cbs.push(cb);
-      label.append(cb, document.createTextNode(it.label));
-      content.appendChild(label);
-    });
+      const readValue = (e) =>
+        e && e.target && e.target.value !== undefined ? e.target.value : (e.detail && e.detail.value);
+      list.addEventListener("ha-list-item-selected", (e) => {
+        const v = readValue(e); if (v == null) return;
+        enabledSet.add(v); updateHeader(); this._applyFilter();
+      });
+      list.addEventListener("ha-list-item-deselected", (e) => {
+        const v = readValue(e); if (v == null) return;
+        enabledSet.delete(v); updateHeader(); this._applyFilter();
+      });
+      content.appendChild(list);
+    } else {
+      items.forEach((it) => {
+        const label = document.createElement("label");
+        label.style.cssText = "display:flex;align-items:center;gap:8px;cursor:pointer;white-space:nowrap;padding:2px 4px";
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.checked = enabledSet.has(it.key);
+        cb.addEventListener("change", () => {
+          if (cb.checked) enabledSet.add(it.key); else enabledSet.delete(it.key);
+          updateHeader(); this._applyFilter();
+        });
+        label.append(cb, document.createTextNode(it.label));
+        content.appendChild(label);
+      });
+    }
 
-    const selectedCount = items.filter((it) => enabledSet.has(it.key)).length;
+    updateHeader();
     if (customElements.get("ha-expansion-panel")) {
       const panel = document.createElement("ha-expansion-panel");
       panel.setAttribute("outlined", "");
       if (enabledSet.size !== items.length) panel.setAttribute("expanded", "");
-      const header = document.createElement("span");
-      header.setAttribute("slot", "header");
-      header.textContent = `${labelText} (${selectedCount}/${items.length})`;
       panel.append(header, content);
       return panel;
     }
@@ -453,7 +500,7 @@ class GrentonObjectsPanel extends HTMLElement {
     wrap.style.cssText = "border:1px solid var(--divider-color);border-radius:8px;padding:8px 12px";
     const h = document.createElement("div");
     h.style.cssText = "font-weight:600;margin-bottom:4px";
-    h.textContent = labelText;
+    h.textContent = header.textContent;
     wrap.append(h, content);
     return wrap;
   }
@@ -471,10 +518,11 @@ class GrentonObjectsPanel extends HTMLElement {
   }
 
   _statusNode(row) {
-    const color = SEV_COLOR[row ? row.sev : "muted"];
+    const sev = row ? row.sev : "muted";
     if (customElements.get("ha-label")) {
       const label = document.createElement("ha-label");
-      label.style.setProperty("--color", color);
+      label.setAttribute("dense", "");
+      label.color = SEV_HEX[sev]; // ha-label derives a contrasting text color
       label.textContent = row ? row.status : "";
       return label;
     }
@@ -482,7 +530,7 @@ class GrentonObjectsPanel extends HTMLElement {
     span.textContent = row ? row.status : "";
     span.style.cssText =
       `display:inline-block;padding:2px 10px;border-radius:12px;white-space:nowrap;` +
-      `font-size:0.85em;color:${color};border:1px solid ${color}`;
+      `font-size:0.85em;color:${SEV_COLOR[sev]};border:1px solid ${SEV_COLOR[sev]}`;
     return span;
   }
 
@@ -501,13 +549,15 @@ class GrentonObjectsPanel extends HTMLElement {
       const badge = document.createElement("state-badge");
       badge.hass = this._hass;
       badge.stateObj = stateObj;
+      badge.color = "state"; // native rule: colour only active states in coloured domains
       badge.style.cssText = "flex:0 0 auto";
       wrap.appendChild(badge);
     }
+    // Text is NOT colour-coded — only the state-badge icon carries state colour.
     const text = document.createElement("span");
     const stateStr = stateObj ? this._formatState(stateObj) : "niedostępna";
     text.innerHTML =
-      `<span style="color:var(--primary-color)">${row.entity_id}</span>` +
+      `<span>${row.entity_id}</span>` +
       `<span style="color:var(--secondary-text-color)"> · ${stateStr}</span>`;
     wrap.appendChild(text);
     wrap.addEventListener("click", () => {
