@@ -308,6 +308,7 @@ def build_report(
         mode = "polling" if ha.get("auto_update", True) else "push"
         rows.append({
             "entity_id": entity_id,
+            "entry_id": ha.get("entry_id"),
             "name": ha.get("name"),
             "device_type": ha.get("device_type"),
             "grenton_id": grenton_id,
@@ -423,6 +424,7 @@ def build_report(
             "in_om": True,
             "in_ha": r is not None,
             "entity_id": r["entity_id"] if r else None,
+            "entry_id": r["entry_id"] if r else None,
             "ha_name": r["name"] if r else None,
             "device_type": r["device_type"] if r else None,
             "mode": r["mode"] if r else None,
@@ -448,6 +450,7 @@ def build_report(
                 "in_om": False,
                 "in_ha": True,
                 "entity_id": r["entity_id"],
+                "entry_id": r["entry_id"],
                 "ha_name": r["name"],
                 "device_type": r["device_type"],
                 "mode": r["mode"],
