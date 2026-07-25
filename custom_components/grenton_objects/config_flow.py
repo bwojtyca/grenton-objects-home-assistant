@@ -38,7 +38,14 @@ from .const import (
     DEFAULT_UPDATE_INTERVAL
 )
 from .options_flow import GrentonOptionsFlowHandler
-from homeassistant.helpers.selector import SelectSelector, SelectSelectorConfig
+from . import report
+from homeassistant.helpers.selector import (
+    SelectSelector,
+    SelectSelectorConfig,
+    FileSelector,
+    FileSelectorConfig,
+)
+from homeassistant.components.file_upload import process_uploaded_file
 from homeassistant.components.cover import CoverDeviceClass
 from homeassistant.components.binary_sensor import BinarySensorDeviceClass
 import logging
@@ -50,11 +57,18 @@ class GrentonConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     def __init__(self):
         self.device_type = None
         self.device_class = None
+        self._report_md = None
 
     async def async_step_user(self, user_input=None):
+        return self.async_show_menu(
+            step_id="user",
+            menu_options=["add_object", "analyze_project"],
+        )
+
+    async def async_step_add_object(self, user_input=None):
         if user_input is None:
             return self.async_show_form(
-                step_id="user",
+                step_id="add_object",
                 data_schema=vol.Schema({
                     vol.Required("device_type"): SelectSelector(
                         SelectSelectorConfig(
@@ -82,6 +96,46 @@ class GrentonConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return await self.async_step_button_config()
         elif self.device_type == "alarm_control_panel":
             return await self.async_step_alarm_control_panel_config()
+
+    @staticmethod
+    def _omp_file_schema():
+        return vol.Schema({
+            vol.Required("omp_file"): FileSelector(
+                FileSelectorConfig(accept=".omp,.zip")
+            )
+        })
+
+    async def async_step_analyze_project(self, user_input=None):
+        if user_input is None:
+            return self.async_show_form(
+                step_id="analyze_project",
+                data_schema=self._omp_file_schema()
+            )
+
+        try:
+            with process_uploaded_file(self.hass, user_input["omp_file"]) as path:
+                parsed = await self.hass.async_add_executor_job(report.parse_omp, str(path))
+        except Exception as err:  # noqa: BLE001 - surface any parse failure to the user
+            _LOGGER.warning("Grenton project analysis failed: %s", err)
+            return self.async_show_form(
+                step_id="analyze_project",
+                data_schema=self._omp_file_schema(),
+                errors={"base": "invalid_omp"}
+            )
+
+        ha_objects = report.collect_ha_objects(self.hass)
+        result = report.build_report(parsed["objects"], parsed["push_events"], ha_objects)
+        self._report_md = report.render_markdown(result)
+        return await self.async_step_analyze_result()
+
+    async def async_step_analyze_result(self, user_input=None):
+        if user_input is None:
+            return self.async_show_form(
+                step_id="analyze_result",
+                data_schema=vol.Schema({}),
+                description_placeholders={"report": self._report_md or ""}
+            )
+        return self.async_abort(reason="analyze_done")
 
     def _persist_last_inputs(self, user_input: dict) -> None:
         self.hass.data[f"{DOMAIN}_last_api_endpoint"] = user_input[CONF_API_ENDPOINT]

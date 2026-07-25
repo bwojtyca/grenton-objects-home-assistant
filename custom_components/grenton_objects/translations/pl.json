@@ -2,11 +2,30 @@
   "config": {
     "step": {
       "user": {
+        "title": "Grenton Objects",
+        "description": "Co chcesz zrobić?",
+        "menu_options": {
+          "add_object": "Dodaj obiekt",
+          "analyze_project": "Analizuj projekt OM (.omp)"
+        }
+      },
+      "add_object": {
         "title": "Dodaj obiekt Grenton",
         "description": "Uwaga! Do prawidłowego działania niezbędne jest utworzenie obiektu wirtualnego HTTP Listener w Grenton (manual https://github.com/jnalepka/grenton-objects-home-assistant).",
         "data": {
           "device_type": "Typ urządzenia"
         }
+      },
+      "analyze_project": {
+        "title": "Analiza projektu OM",
+        "description": "Wgraj plik projektu Object Managera (.omp). Zostanie porównany z aktualną konfiguracją Home Assistant — nic nie zostanie zmienione.",
+        "data": {
+          "omp_file": "Plik projektu OM (.omp)"
+        }
+      },
+      "analyze_result": {
+        "title": "Raport zgodności",
+        "description": "{report}"
       },
       "light_config": {
         "title": "Typ urządzenia: Światło",
@@ -111,7 +130,11 @@
       "min_value": "Wartość musi wynosić co najmniej {min}.",
       "max_value": "Wartość może wynosić maksymalnie {max}.",
       "min_greater_than_max": "Wartość minimalna nie może być większa niż wartość maksymalna.",
-      "duplicate_grenton_id": "Ten identyfikator Grenton jest już używany."
+      "duplicate_grenton_id": "Ten identyfikator Grenton jest już używany.",
+      "invalid_omp": "Nie udało się odczytać pliku .omp. Upewnij się, że to prawidłowy plik projektu z Object Managera."
+    },
+    "abort": {
+      "analyze_done": "Raport zamknięty."
     }
   },
   "options": {

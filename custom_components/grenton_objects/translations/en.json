@@ -2,11 +2,30 @@
   "config": {
     "step": {
       "user": {
+        "title": "Grenton Objects",
+        "description": "What would you like to do?",
+        "menu_options": {
+          "add_object": "Add object",
+          "analyze_project": "Analyze OM project (.omp)"
+        }
+      },
+      "add_object": {
         "title": "Add Grenton Object",
         "description": "Note! To ensure proper operation, it is necessary to create a virtual HTTP Listener object in Grenton (see manual: https://github.com/jnalepka/grenton-objects-home-assistant).",
         "data": {
           "device_type": "Device Type"
         }
+      },
+      "analyze_project": {
+        "title": "Analyze OM project",
+        "description": "Upload your Object Manager project file (.omp). It is compared against the current Home Assistant configuration — nothing is changed.",
+        "data": {
+          "omp_file": "OM project file (.omp)"
+        }
+      },
+      "analyze_result": {
+        "title": "Reconciliation report",
+        "description": "{report}"
       },
       "light_config": {
         "title": "Device Type: Light",
@@ -111,7 +130,11 @@
       "min_value": "The value must be at least {min}.",
       "max_value": "The value can be at most {max}.",
       "min_greater_than_max": "The minimum value cannot be greater than the maximum value.",
-      "duplicate_grenton_id": "This Grenton Object ID is already used."
+      "duplicate_grenton_id": "This Grenton Object ID is already used.",
+      "invalid_omp": "Could not read the .omp file. Make sure it is a valid Object Manager project file."
+    },
+    "abort": {
+      "analyze_done": "Report closed."
     }
   },
   "options": {

@@ -146,6 +146,24 @@ Notes:
 - Non-numeric sensor values (e.g. text statuses) are never filtered by this check.
 - Rejected readings are logged as a warning, so a persistently misbehaving sensor stays visible in the logs.
 
+## 🔍 OM project analysis
+
+You can check how your Object Manager project lines up with what is actually configured in Home Assistant — without changing anything.
+
+1. Open `Settings` → `Devices & services` → `+ Add integration`.
+2. Select **Grenton Objects** → **Analyze OM project (.omp)**.
+3. Upload your `.omp` project file (the Object Manager project archive).
+
+The report is shown right in the dialog and covers:
+
+- update mode per entity (**polling** vs **push**), overall and per domain,
+- 🔴 HA entities pointing to a `grenton_id` that no longer exists in the project,
+- ⚠️ push-mode entities with no matching Grenton push event (and Grenton push events targeting an entity that no longer exists in HA),
+- ℹ️ polling entities that also receive a push event (redundant double updates),
+- 🟡 controllable/readable Grenton objects that are not exposed in HA yet (DIN/Satel inputs are counted separately, not listed as missing).
+
+It is read-only: the project file is only compared against the live configuration, nothing is added or modified.
+
 ## 🔄 Auto updates
 
 The add-on automatically retrieves the status of objects from Grenton. This works well for a small number of objects (around 15) and when immediate state updates are not required.
