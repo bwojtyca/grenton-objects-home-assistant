@@ -70,7 +70,7 @@ function toBase64(buffer) {
 }
 
 async function ensureHaComponents() {
-  const want = ["ha-card", "ha-alert", "ha-data-table", "ha-button-menu", "ha-icon"];
+  const want = ["ha-card", "ha-alert", "ha-data-table", "ha-selector", "ha-icon"];
   if (want.every((tag) => customElements.get(tag))) return;
   try {
     if (window.loadCardHelpers) {
@@ -328,18 +328,20 @@ class GrentonObjectsPanel extends HTMLElement {
       "border-radius:8px;background:var(--card-background-color);color:var(--primary-text-color)";
     search.addEventListener("input", () => { this._search = search.value.trim().toLowerCase(); this._applyFilter(); });
 
-    const typeItems = typeSummary.map((t) => ({
-      key: t.type,
+    const typeOptions = typeSummary.map((t) => ({
+      value: t.type,
       label: `${t.type} (${t.count})${t.supported ? "" : " · nieobsł."}`,
     }));
     const updCounts = this._countBy("updateCat");
     const statCounts = this._countBy("statusCat");
+    const updOptions = UPDATE_CATS.map((c) => ({ value: c.key, label: `${c.label} (${updCounts[c.key] || 0})` }));
+    const statOptions = STATUS_CATS.map((c) => ({ value: c.key, label: `${c.label} (${statCounts[c.key] || 0})` }));
 
     bar.append(
       search,
-      this._dropdown("Typ", typeItems, this._typeEnabled, true),
-      this._dropdown("Aktualizacja", UPDATE_CATS.map((c) => ({ key: c.key, label: `${c.label} (${updCounts[c.key] || 0})` })), this._updEnabled, false),
-      this._dropdown("Status", STATUS_CATS.map((c) => ({ key: c.key, label: `${c.label} (${statCounts[c.key] || 0})` })), this._statEnabled, false)
+      this._selectorFilter("Typ", typeOptions, this._typeEnabled, true),
+      this._selectorFilter("Aktualizacja", updOptions, this._updEnabled, false),
+      this._selectorFilter("Status", statOptions, this._statEnabled, false)
     );
 
     this._count = document.createElement("span");
@@ -354,22 +356,34 @@ class GrentonObjectsPanel extends HTMLElement {
     return counts;
   }
 
-  // A dropdown multi-select using ha-button-menu (fallback: inline checkboxes).
-  _dropdown(labelText, items, enabledSet, withSelectAll) {
-    const total = items.length;
-    const cbs = [];
-    const content = document.createElement("div");
-    content.style.cssText = "padding:8px 12px;display:flex;flex-direction:column;gap:6px;min-width:220px;max-height:420px;overflow:auto";
+  // A multi-select filter using the native ha-selector (select, multiple,
+  // dropdown — selected options shown as chips in the form field). Falls back to
+  // an inline bordered checkbox group if ha-selector is unavailable.
+  _selectorFilter(label, options, enabledSet, withSelectAll) {
+    if (!customElements.get("ha-selector")) {
+      return this._inlineGroup(label, options, enabledSet, withSelectAll);
+    }
+    const container = document.createElement("div");
+    container.style.cssText = "display:flex;flex-direction:column;gap:4px;flex:1 1 260px;min-width:240px";
 
-    const useMenu = !!customElements.get("ha-button-menu");
-    const trigger = document.createElement("ha-button");
-    if (!useMenu) trigger.remove();
-    const updateLabel = () => { if (trigger) trigger.textContent = `${labelText}: ${enabledSet.size}/${total} ▾`; };
+    const sel = document.createElement("ha-selector");
+    sel.hass = this._hass;
+    sel.label = label;
+    sel.selector = { select: { multiple: true, mode: "dropdown", options } };
+    sel.value = options.filter((o) => enabledSet.has(o.value)).map((o) => o.value);
+    sel.addEventListener("value-changed", (e) => {
+      e.stopPropagation();
+      const value = e.detail && e.detail.value ? e.detail.value : [];
+      enabledSet.clear();
+      value.forEach((v) => enabledSet.add(v));
+      this._applyFilter();
+    });
+    container.appendChild(sel);
 
     if (withSelectAll) {
       const btnRow = document.createElement("div");
-      btnRow.style.cssText = "display:flex;gap:8px;margin-bottom:4px";
-      const mkBtn = (text, on) => {
+      btnRow.style.cssText = "display:flex;gap:8px";
+      const mk = (text, on) => {
         const b = document.createElement("button");
         b.textContent = text;
         b.style.cssText =
@@ -377,49 +391,38 @@ class GrentonObjectsPanel extends HTMLElement {
           "background:var(--secondary-background-color);color:var(--primary-text-color);font-size:0.85em";
         b.addEventListener("click", () => {
           enabledSet.clear();
-          if (on) items.forEach((it) => enabledSet.add(it.key));
-          cbs.forEach((cb, i) => { cb.checked = enabledSet.has(items[i].key); });
-          updateLabel();
+          if (on) options.forEach((o) => enabledSet.add(o.value));
+          sel.value = Array.from(enabledSet);
           this._applyFilter();
         });
         return b;
       };
-      btnRow.append(mkBtn("wszystkie", true), mkBtn("żadne", false));
-      content.appendChild(btnRow);
+      btnRow.append(mk("wszystkie", true), mk("żadne", false));
+      container.appendChild(btnRow);
     }
+    return container;
+  }
 
-    items.forEach((it) => {
-      const label = document.createElement("label");
-      label.style.cssText = "display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap";
+  _inlineGroup(label, options, enabledSet, withSelectAll) {
+    const wrap = document.createElement("div");
+    wrap.style.cssText = "border:1px solid var(--divider-color);border-radius:8px;padding:6px 12px;min-width:220px";
+    const head = document.createElement("div");
+    head.style.cssText = "font-weight:600;margin-bottom:4px";
+    head.textContent = label;
+    wrap.appendChild(head);
+    options.forEach((o) => {
+      const lbl = document.createElement("label");
+      lbl.style.cssText = "display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap";
       const cb = document.createElement("input");
       cb.type = "checkbox";
-      cb.checked = enabledSet.has(it.key);
+      cb.checked = enabledSet.has(o.value);
       cb.addEventListener("change", () => {
-        if (cb.checked) enabledSet.add(it.key); else enabledSet.delete(it.key);
-        updateLabel();
+        if (cb.checked) enabledSet.add(o.value); else enabledSet.delete(o.value);
         this._applyFilter();
       });
-      cbs.push(cb);
-      label.append(cb, document.createTextNode(it.label));
-      content.appendChild(label);
+      lbl.append(cb, document.createTextNode(o.label));
+      wrap.appendChild(lbl);
     });
-
-    if (useMenu) {
-      const menu = document.createElement("ha-button-menu");
-      menu.setAttribute("fixed", "");
-      trigger.setAttribute("slot", "trigger");
-      trigger.setAttribute("outlined", "");
-      updateLabel();
-      menu.append(trigger, content);
-      return menu;
-    }
-    // Fallback: bordered inline group.
-    const wrap = document.createElement("div");
-    wrap.style.cssText = "border:1px solid var(--divider-color);border-radius:8px;";
-    const head = document.createElement("div");
-    head.style.cssText = "font-weight:600;padding:6px 12px 0";
-    head.textContent = labelText;
-    wrap.append(head, content);
     return wrap;
   }
 
@@ -478,16 +481,16 @@ class GrentonObjectsPanel extends HTMLElement {
       span.textContent = "konfiguruj";
       span.style.color = "var(--primary-color)";
     }
-    span.addEventListener("click", () => this._openIntegration());
+    span.addEventListener("click", () => this._openIntegration(row.entry_id));
     return span;
   }
 
-  _openIntegration() {
-    const path = `/config/integrations/integration/${DOMAIN}`;
-    if (window.location.pathname !== path) {
-      window.history.pushState(null, "", path);
-      this.dispatchEvent(new CustomEvent("location-changed", { bubbles: true, composed: true }));
-    }
+  _openIntegration(entryId) {
+    // HA focuses/expands a specific config entry via the `#config_entry=<id>` hash.
+    let path = `/config/integrations/integration/${DOMAIN}`;
+    if (entryId) path += `#config_entry=${entryId}`;
+    window.history.pushState(null, "", path);
+    this.dispatchEvent(new CustomEvent("location-changed", { bubbles: true, composed: true }));
   }
 
   _buildTable() {
