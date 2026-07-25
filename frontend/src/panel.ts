@@ -39,6 +39,21 @@ const STATUS_CATS = [
 
 const slug = (s: string) => s.replace(/[^a-zA-Z0-9]+/g, "_");
 
+const ADD_DEVICE_TYPES = ["light", "switch", "cover", "climate", "sensor", "binary_sensor"];
+
+// Best-effort default HA device type for a Grenton object type (user can change
+// it before adding; DOUT is ambiguous light/switch → default switch).
+function inferDeviceType(omType: string): string {
+  const t = omType || "";
+  if (t === "ROLLER_SHUTTER") return "cover";
+  if (t === "Thermostat") return "climate";
+  if (t === "ONEW_SENSOR") return "sensor";
+  if (t === "DIN" || t === "SatelInput") return "binary_sensor";
+  if (t === "SatelOutput" || t === "SatelZone") return "switch";
+  if (t.startsWith("DALI") || t.startsWith("LED")) return "light";
+  return "switch";
+}
+
 interface StatusInfo {
   label: string;
   sev: keyof typeof SEV_HEX;
@@ -131,6 +146,7 @@ export class GrentonObjectsPanel extends LitElement {
   @state() private _statSel = new Set<string>();
 
   private _entityIds = new Set<string>();
+  private _lastOmp?: string; // base64 of the uploaded .omp, kept to re-run analysis after a repair
 
   static styles = css`
     :host { display: block; height: 100%; }
@@ -171,6 +187,13 @@ export class GrentonObjectsPanel extends LitElement {
     .issue-sec { margin-bottom: 12px; }
     .issue-h { font-weight: 600; margin-bottom: 2px; }
     .issue-action { margin-top: 6px; }
+    .add-action { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .add-label { display: inline-flex; align-items: center; gap: 6px; color: var(--secondary-text-color); }
+    .add-label select {
+      font: inherit; color: var(--primary-text-color);
+      background: var(--card-background-color, var(--secondary-background-color));
+      border: 1px solid var(--divider-color); border-radius: 6px; padding: 6px 8px;
+    }
     .dialog-footer { display: flex; gap: var(--ha-space-3, 12px); justify-content: flex-end; align-items: center; flex-wrap: wrap; padding: 8px 24px 16px; }
   `;
 
@@ -548,7 +571,7 @@ export class GrentonObjectsPanel extends LitElement {
       default: // not_in_ha
         return { sections: [
           { h: "Co jest nie tak", body: `Obiekt „${row.grenton_id}" (${row.type}) istnieje w projekcie Grentona, ale nie jest dodany do HA.` },
-          { h: "Jak dodać", body: "Jeśli chcesz nim sterować/monitorować, dodaj go w integracji (Ustawienia → Urządzenia i usługi → Grenton Objects → Dodaj)." },
+          { h: "Jak dodać", body: `Wybierz typ encji i kliknij „Dodaj do HA" — encja powstanie z pollingiem (adres bramki jak w pozostałych obiektach). Domyślny typ to podpowiedź dla „${row.type}"; DOUT bywa światłem lub przełącznikiem — zmień, jeśli trzeba. Aktualizację przez push skonfigurujesz później w OM.` },
         ] };
     }
   }
@@ -565,6 +588,21 @@ export class GrentonObjectsPanel extends LitElement {
             ? html`<div class="issue-action">
                 <ha-button appearance="accent" size="small" @click=${() => this._fixDisablePolling(row)}>
                   Napraw: wyłącz polling
+                </ha-button>
+              </div>`
+            : nothing}
+          ${row.flag === "not_in_ha" && row.grenton_id
+            ? html`<div class="issue-action add-action">
+                <label class="add-label">
+                  Typ encji:
+                  <select id="add-device-type">
+                    ${ADD_DEVICE_TYPES.map(
+                      (dt) => html`<option value=${dt} ?selected=${dt === inferDeviceType(row.type)}>${dt}</option>`
+                    )}
+                  </select>
+                </label>
+                <ha-button appearance="accent" size="small" @click=${() => this._fixAddObject(row)}>
+                  Dodaj do HA
                 </ha-button>
               </div>`
             : nothing}
@@ -585,30 +623,38 @@ export class GrentonObjectsPanel extends LitElement {
 
   private async _fixDisablePolling(row: ViewRow) {
     if (!row.entry_id) return;
+    this._issue = undefined;
     try {
       await this.hass.connection.sendMessagePromise({
         type: "grenton_objects/set_auto_update",
         entry_id: row.entry_id,
         auto_update: false,
       });
-      // Optimistic: the entity now updates by push only — drop the redundancy.
-      this._patchMerged(row.entity_id, { mode: "push", dropFlag: "poll_redundant" });
+      await this._reanalyze(); // recompute report → redundancy disappears from summary + table
       this._toast(`Wyłączono polling dla ${row.entity_id} — aktualizacja tylko przez push.`);
     } catch (e: any) {
       this._toast(`Nie udało się: ${e?.message || e?.code || "błąd"}`);
-    } finally {
-      this._issue = undefined;
     }
   }
 
-  private _patchMerged(entityId: string, patch: { mode?: any; dropFlag?: string }) {
-    if (!this._report) return;
-    const merged = this._report.merged.map((r) => {
-      if (r.entity_id !== entityId) return r;
-      const flags = patch.dropFlag ? r.flags.filter((f) => f !== patch.dropFlag) : r.flags;
-      return { ...r, ...(patch.mode !== undefined ? { mode: patch.mode } : {}), flags };
-    });
-    this._report = { ...this._report, merged };
+  private async _fixAddObject(row: ViewRow) {
+    if (!row.grenton_id) return;
+    const sel = this.renderRoot.querySelector<HTMLSelectElement>("#add-device-type");
+    const deviceType = sel?.value || inferDeviceType(row.type);
+    this._issue = undefined;
+    try {
+      await this.hass.connection.sendMessagePromise({
+        type: "grenton_objects/add_object",
+        grenton_id: row.grenton_id,
+        device_type: deviceType,
+        om_type: row.type,
+        name: row.name,
+      });
+      await this._reanalyze(); // recompute report → object now shows as present in HA
+      this._toast(`Dodano „${row.name || row.grenton_id}" do HA jako ${deviceType}.`);
+    } catch (e: any) {
+      this._toast(`Nie udało się dodać: ${e?.message || e?.code || "błąd"}`);
+    }
   }
 
   private _toast(message: string) {
@@ -734,20 +780,35 @@ export class GrentonObjectsPanel extends LitElement {
 
   private async _analyze(file?: File) {
     if (!file) return;
+    this._busyName = file.name;
+    const buffer = await file.arrayBuffer();
+    this._lastOmp = toBase64(buffer);
+    await this._doAnalyze(true);
+  }
+
+  // Re-run the analysis on the last uploaded .omp. Used after a repair action so
+  // the summary AND the table reflect the changed HA config (the backend reads
+  // the live config on every analyze) — resolved issues disappear.
+  private async _reanalyze() {
+    if (this._lastOmp) await this._doAnalyze(false);
+  }
+
+  private async _doAnalyze(resetFilters: boolean) {
+    if (!this._lastOmp) return;
     this._error = undefined;
     this._busy = true;
-    this._busyName = file.name;
     try {
-      const buffer = await file.arrayBuffer();
       const report = await this.hass.connection.sendMessagePromise<Report>({
         type: "grenton_objects/analyze",
-        omp_base64: toBase64(buffer),
+        omp_base64: this._lastOmp,
       });
       this._report = report;
       this._entityIds = new Set(report.merged.map((r) => r.entity_id).filter((x): x is string => !!x));
-      this._typeSel = this._defaultTypeSel();
-      this._updSel = new Set();
-      this._statSel = new Set();
+      if (resetFilters) {
+        this._typeSel = this._defaultTypeSel();
+        this._updSel = new Set();
+        this._statSel = new Set();
+      }
     } catch (err: any) {
       this._error = err?.message || err?.code || "Nie udało się odczytać pliku .omp.";
     } finally {

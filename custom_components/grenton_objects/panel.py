@@ -24,7 +24,18 @@ from homeassistant.core import HomeAssistant
 from homeassistant.loader import async_get_integration
 
 from . import report
-from .const import DOMAIN
+from .const import (
+    DOMAIN,
+    CONF_API_ENDPOINT,
+    CONF_GRENTON_ID,
+    CONF_GRENTON_TYPE,
+    CONF_OBJECT_NAME,
+    CONF_DEVICE_CLASS,
+    CONF_REVERSED,
+    CONF_AUTO_UPDATE,
+    CONF_UPDATE_INTERVAL,
+    DEFAULT_UPDATE_INTERVAL,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -54,6 +65,7 @@ async def async_setup_panel(hass: HomeAssistant) -> None:
 
     websocket_api.async_register_command(hass, ws_analyze_project)
     websocket_api.async_register_command(hass, ws_set_auto_update)
+    websocket_api.async_register_command(hass, ws_add_object)
 
     # Cache-bust the module URL with the integration version, otherwise the
     # browser/frontend keeps serving an old panel.js from the fixed URL.
@@ -129,4 +141,87 @@ async def ws_set_auto_update(hass, connection, msg) -> None:
         return
     options = {**entry.options, "auto_update": msg["auto_update"]}
     hass.config_entries.async_update_entry(entry, options=options)
+    connection.send_result(msg["id"], {"ok": True})
+
+
+_ADD_DEVICE_TYPES = {"light", "switch", "cover", "climate", "sensor", "binary_sensor"}
+
+
+def _infer_grenton_type(device_type: str, om_type: str | None) -> str | None:
+    """Best-effort Grenton object type for a new entry, from OM type."""
+    t = om_type or ""
+    if device_type == "binary_sensor":
+        return "SATEL_INPUT" if t == "SatelInput" else "DIN"
+    if device_type == "switch":
+        if t == "SatelZone":
+            return "SATEL_ZONE"
+        if t == "SatelOutput":
+            return "SATEL_OUTPUT"
+        return "DOUT"
+    if device_type == "light":
+        if t.startswith("DALI"):
+            return "DALI"
+        if t == "LEDRGB":
+            return "RGB"
+        if t == "LED_CHANNEL":
+            return "LED_CHANNEL"
+        if t.startswith("LED"):
+            return "LED"
+        if "DIM" in t.upper():
+            return "DIMMER"
+        return "DOUT"
+    if device_type == "sensor":
+        return "DEFAULT_SENSOR"
+    return None  # cover / climate: no grenton_type in the config entry
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "grenton_objects/add_object",
+        vol.Required("grenton_id"): str,
+        vol.Required("device_type"): str,
+        vol.Optional("om_type"): str,
+        vol.Optional("name"): str,
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_add_object(hass, connection, msg) -> None:
+    """Repair action: add an HA entity for a Grenton object present in the .omp
+    but not yet in HA. Creates a config entry via the flow's import step; the
+    gateway endpoint is reused from an existing entry."""
+    device_type = msg["device_type"]
+    if device_type not in _ADD_DEVICE_TYPES:
+        connection.send_error(msg["id"], "bad_type", "Nieobsługiwany typ encji.")
+        return
+    endpoint = None
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        endpoint = entry.options.get(CONF_API_ENDPOINT) or entry.data.get(CONF_API_ENDPOINT)
+        if endpoint:
+            break
+    if not endpoint:
+        connection.send_error(msg["id"], "no_endpoint", "Brak istniejącego endpointu — dodaj pierwszy obiekt ręcznie.")
+        return
+
+    data = {
+        "device_type": device_type,
+        CONF_API_ENDPOINT: endpoint,
+        CONF_GRENTON_ID: msg["grenton_id"],
+        CONF_OBJECT_NAME: msg.get("name") or msg["grenton_id"],
+        CONF_AUTO_UPDATE: True,
+        CONF_UPDATE_INTERVAL: DEFAULT_UPDATE_INTERVAL,
+    }
+    grenton_type = _infer_grenton_type(device_type, msg.get("om_type"))
+    if grenton_type:
+        data[CONF_GRENTON_TYPE] = grenton_type
+    if device_type == "cover":
+        data[CONF_DEVICE_CLASS] = "shutter"
+        data[CONF_REVERSED] = False
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": "import"}, data=data
+    )
+    if result.get("type") == "abort":
+        connection.send_error(msg["id"], result.get("reason") or "abort", "Nie dodano (możliwy duplikat).")
+        return
     connection.send_result(msg["id"], {"ok": True})

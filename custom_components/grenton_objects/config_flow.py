@@ -51,6 +51,17 @@ class GrentonConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self.device_type = None
         self.device_class = None
 
+    async def async_step_import(self, import_data):
+        """Create an object entry from prefilled data (used by the analysis
+        panel's 'Add to HA' repair action). No form — data is already complete."""
+        self.device_type = import_data.get("device_type")
+        if self._is_duplicate_grenton_id(import_data.get(CONF_GRENTON_ID), import_data.get(CONF_GRENTON_TYPE)):
+            return self.async_abort(reason="duplicate_grenton_id")
+        return self.async_create_entry(
+            title=import_data.get(CONF_OBJECT_NAME) or import_data.get(CONF_GRENTON_ID),
+            data=import_data,
+        )
+
     async def async_step_user(self, user_input=None):
         if user_input is None:
             return self.async_show_form(
