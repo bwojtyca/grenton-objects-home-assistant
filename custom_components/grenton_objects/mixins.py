@@ -38,7 +38,13 @@ class GrentonPollingMixin:
             self._unsub_interval = async_track_time_interval(
                 self.hass, self._update_callback, timedelta(seconds=self._update_interval)
             )
-            await self.async_update()
+        # Always fetch the current state once on add — for push entities
+        # (auto_update off) too. Without this a push entity stays Unknown after a
+        # restart until the device physically changes and emits a push event; the
+        # one-shot read seeds HA with the real Grenton state immediately. The read
+        # is coalesced with every other entity's startup read by the API client's
+        # status batcher, so this does not stampede the gate.
+        await self.async_update()
 
     async def async_will_remove_from_hass(self):
         if self._unsub_interval:
