@@ -148,9 +148,9 @@ Notes:
 
 ## OM project analysis
 
-A **Grenton** page is added to the Home Assistant sidebar. There you can upload your Object Manager project file (`.omp`) and see how it lines up with what is actually configured in Home Assistant — read-only, nothing is changed.
+The integration adds a project-analysis page, opened from its own page in `Settings` → `Devices & services` → **Grenton Objects** (it is not shown in the sidebar by default; you can pin it there via *Edit sidebar* if you like). There you can upload your Object Manager project file (`.omp`) and see how it lines up with what is actually configured in Home Assistant — read-only, nothing is changed.
 
-Open the **Grenton** entry in the sidebar, upload your `.omp`, and the report covers:
+Upload your `.omp`, and the report covers:
 
 - update mode per entity (**polling** vs **push**), overall and per domain,
 - HA entities pointing to a `grenton_id` that no longer exists in the project,

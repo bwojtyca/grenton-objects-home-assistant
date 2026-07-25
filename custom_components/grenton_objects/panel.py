@@ -18,7 +18,7 @@ import logging
 import os
 
 import voluptuous as vol
-from homeassistant.components import frontend, websocket_api
+from homeassistant.components import frontend, panel_custom, websocket_api
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.core import HomeAssistant
 
@@ -27,14 +27,21 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-PANEL_URL_PATH = "grenton-objects"
+PANEL_URL_PATH = DOMAIN  # matches config_panel_domain, opened from the integration page
 PANEL_JS_URL = "/grenton_objects_frontend/panel.js"
 PANEL_ELEMENT = "grenton-objects-panel"
 _REGISTERED_FLAG = f"{DOMAIN}_panel_registered"
 
 
 async def async_setup_panel(hass: HomeAssistant) -> None:
-    """Register the static frontend, the websocket command and the sidebar panel."""
+    """Register the static frontend, the websocket command and the config panel.
+
+    The panel is registered as the integration's *config panel*
+    (``config_panel_domain``) and without a sidebar title, so it does NOT appear
+    in the sidebar by default — it is opened from the integration's page in
+    Settings → Devices & services. (Users can still pin it to the sidebar via
+    "Edit sidebar" if they want.) This mirrors how lcn / dynalite / insteon do it.
+    """
     if hass.data.get(_REGISTERED_FLAG):
         return
     hass.data[_REGISTERED_FLAG] = True
@@ -46,26 +53,16 @@ async def async_setup_panel(hass: HomeAssistant) -> None:
 
     websocket_api.async_register_command(hass, ws_analyze_project)
 
-    try:
-        frontend.async_register_built_in_panel(
-            hass,
-            "custom",
-            sidebar_title="Grenton",
-            sidebar_icon="mdi:home-automation",
+    if not frontend.async_panel_exists(hass, PANEL_URL_PATH):
+        await panel_custom.async_register_panel(
+            hass=hass,
             frontend_url_path=PANEL_URL_PATH,
+            webcomponent_name=PANEL_ELEMENT,
+            module_url=PANEL_JS_URL,
+            embed_iframe=False,
             require_admin=True,
-            config={
-                "_panel_custom": {
-                    "name": PANEL_ELEMENT,
-                    "module_url": PANEL_JS_URL,
-                    "embed_iframe": False,
-                    "trust_external": False,
-                }
-            },
+            config_panel_domain=DOMAIN,
         )
-    except ValueError:
-        # Panel already registered (e.g. integration reload) — nothing to do.
-        pass
 
 
 @websocket_api.websocket_command(
