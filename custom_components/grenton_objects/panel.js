@@ -167,9 +167,32 @@ async function ensureHaComponents() {
 
 class GrentonObjectsPanel extends HTMLElement {
   set hass(hass) {
+    const prev = this._hass;
     this._hass = hass;
     if (this._dataTable) this._dataTable.hass = hass;
-    if (!this._built) this._build();
+    if (!this._built) {
+      this._build();
+      return;
+    }
+    // Live refresh: re-render the table only when one of OUR entities actually
+    // changed state (HA swaps the state object reference on change), debounced —
+    // so unrelated state changes in the system don't thrash the table.
+    if (prev && this._entityIds && this._entityIds.size) {
+      for (const id of this._entityIds) {
+        if (prev.states[id] !== hass.states[id]) {
+          this._scheduleRefresh();
+          break;
+        }
+      }
+    }
+  }
+
+  _scheduleRefresh() {
+    if (this._refreshTimer) return; // coalesce to one refresh per window
+    this._refreshTimer = setTimeout(() => {
+      this._refreshTimer = null;
+      this._applyFilter();
+    }, 500);
   }
   set narrow(value) { this._narrow = value; }
   set route(value) {}
@@ -365,6 +388,7 @@ class GrentonObjectsPanel extends HTMLElement {
       };
     });
 
+    this._entityIds = new Set(this._allRows.map((r) => r.entity_id).filter(Boolean));
     this._search = "";
     this._typeSummary = report.type_summary;
     this._typeDefault = () => new Set(report.type_summary.filter((t) => t.supported && t.type !== "DIN").map((t) => t.type));
