@@ -53,6 +53,7 @@ async def async_setup_panel(hass: HomeAssistant) -> None:
     )
 
     websocket_api.async_register_command(hass, ws_analyze_project)
+    websocket_api.async_register_command(hass, ws_set_auto_update)
 
     # Cache-bust the module URL with the integration version, otherwise the
     # browser/frontend keeps serving an old panel.js from the fixed URL.
@@ -105,3 +106,27 @@ async def ws_analyze_project(hass, connection, msg) -> None:
     )
     result["clus"] = parsed["clus"]
     connection.send_result(msg["id"], result)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "grenton_objects/set_auto_update",
+        vol.Required("entry_id"): str,
+        vol.Required("auto_update"): bool,
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_set_auto_update(hass, connection, msg) -> None:
+    """Repair action: toggle a Grenton object's automatic polling (auto_update).
+
+    Used from the panel to remove redundant polling on push entities. Writes the
+    config entry's options; the integration's update listener reloads the entry.
+    """
+    entry = hass.config_entries.async_get_entry(msg["entry_id"])
+    if entry is None or entry.domain != DOMAIN:
+        connection.send_error(msg["id"], "not_found", "Nie znaleziono wpisu konfiguracji.")
+        return
+    options = {**entry.options, "auto_update": msg["auto_update"]}
+    hass.config_entries.async_update_entry(entry, options=options)
+    connection.send_result(msg["id"], {"ok": True})

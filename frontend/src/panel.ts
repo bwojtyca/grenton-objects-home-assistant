@@ -555,6 +555,11 @@ export class GrentonObjectsPanel extends LitElement {
         <div class="issue">
           ${d.sections.map((s) => html`<div class="issue-sec"><div class="issue-h">${s.h}</div><div>${s.body}</div></div>`)}
         </div>
+        ${row.flag === "poll_redundant" && row.entry_id
+          ? html`<ha-button slot="primaryAction" @click=${() => this._fixDisablePolling(row)}>
+              Wyłącz polling
+            </ha-button>`
+          : nothing}
         ${row.entry_id
           ? html`<ha-button slot="secondaryAction" @click=${() => { this._issue = undefined; this._openConfig(row.entry_id); }}>
               Konfiguruj encję
@@ -563,6 +568,40 @@ export class GrentonObjectsPanel extends LitElement {
         <ha-button slot="primaryAction" dialogAction="close">Zamknij</ha-button>
       </ha-dialog>
     `;
+  }
+
+  // ─── repair actions (HA-side) ──────────────────────────────────────────
+
+  private async _fixDisablePolling(row: ViewRow) {
+    if (!row.entry_id) return;
+    try {
+      await this.hass.connection.sendMessagePromise({
+        type: "grenton_objects/set_auto_update",
+        entry_id: row.entry_id,
+        auto_update: false,
+      });
+      // Optimistic: the entity now updates by push only — drop the redundancy.
+      this._patchMerged(row.entity_id, { mode: "push", dropFlag: "poll_redundant" });
+      this._toast(`Wyłączono polling dla ${row.entity_id} — aktualizacja tylko przez push.`);
+    } catch (e: any) {
+      this._toast(`Nie udało się: ${e?.message || e?.code || "błąd"}`);
+    } finally {
+      this._issue = undefined;
+    }
+  }
+
+  private _patchMerged(entityId: string, patch: { mode?: any; dropFlag?: string }) {
+    if (!this._report) return;
+    const merged = this._report.merged.map((r) => {
+      if (r.entity_id !== entityId) return r;
+      const flags = patch.dropFlag ? r.flags.filter((f) => f !== patch.dropFlag) : r.flags;
+      return { ...r, ...(patch.mode !== undefined ? { mode: patch.mode } : {}), flags };
+    });
+    this._report = { ...this._report, merged };
+  }
+
+  private _toast(message: string) {
+    this.dispatchEvent(new CustomEvent("hass-notification", { detail: { message }, bubbles: true, composed: true }));
   }
 
   private _actionsCell(row: ViewRow): TemplateResult | typeof nothing {
