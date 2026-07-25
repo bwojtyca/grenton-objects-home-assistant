@@ -169,6 +169,7 @@ export class GrentonObjectsPanel extends LitElement {
     .issue { line-height: 1.5; max-width: 460px; }
     .issue-sec { margin-bottom: 12px; }
     .issue-h { font-weight: 600; margin-bottom: 2px; }
+    .dialog-footer { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; padding: 8px 24px 16px; }
   `;
 
   protected shouldUpdate(changed: PropertyValues): boolean {
@@ -328,11 +329,13 @@ export class GrentonObjectsPanel extends LitElement {
     return html`
       <ha-dialog
         open
-        hideActions
-        .heading=${"Podsumowanie analizy"}
+        .headerTitle=${"Podsumowanie analizy"}
         @closed=${() => (this._summaryOpen = false)}
       >
         ${this._summaryInner()}
+        <div slot="footer" class="dialog-footer">
+          <ha-button appearance="plain" data-dialog="close">Zamknij</ha-button>
+        </div>
       </ha-dialog>
     `;
   }
@@ -551,21 +554,21 @@ export class GrentonObjectsPanel extends LitElement {
     if (!row) return nothing;
     const d = this._issueDetails(row);
     return html`
-      <ha-dialog open .heading=${row.status} @closed=${() => (this._issue = undefined)}>
+      <ha-dialog open .headerTitle=${row.status} @closed=${() => (this._issue = undefined)}>
         <div class="issue">
           ${d.sections.map((s) => html`<div class="issue-sec"><div class="issue-h">${s.h}</div><div>${s.body}</div></div>`)}
         </div>
-        ${row.flag === "poll_redundant" && row.entry_id
-          ? html`<ha-button slot="primaryAction" @click=${() => this._fixDisablePolling(row)}>
-              Wyłącz polling
-            </ha-button>`
-          : nothing}
-        ${row.entry_id
-          ? html`<ha-button slot="secondaryAction" @click=${() => { this._issue = undefined; this._openConfig(row.entry_id); }}>
-              Konfiguruj encję
-            </ha-button>`
-          : nothing}
-        <ha-button slot="primaryAction" dialogAction="close">Zamknij</ha-button>
+        <div slot="footer" class="dialog-footer">
+          ${row.entry_id
+            ? html`<ha-button appearance="plain" @click=${() => { this._issue = undefined; this._openConfig(row.entry_id); }}>
+                Konfiguruj encję
+              </ha-button>`
+            : nothing}
+          ${row.flag === "poll_redundant" && row.entry_id
+            ? html`<ha-button raised @click=${() => this._fixDisablePolling(row)}>Wyłącz polling</ha-button>`
+            : nothing}
+          <ha-button appearance="plain" data-dialog="close">Zamknij</ha-button>
+        </div>
       </ha-dialog>
     `;
   }
