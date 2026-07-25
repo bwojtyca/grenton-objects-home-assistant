@@ -21,6 +21,7 @@ import voluptuous as vol
 from homeassistant.components import frontend, websocket_api
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.core import HomeAssistant
+from homeassistant.loader import async_get_integration
 
 from . import report
 from .const import DOMAIN
@@ -53,6 +54,15 @@ async def async_setup_panel(hass: HomeAssistant) -> None:
 
     websocket_api.async_register_command(hass, ws_analyze_project)
 
+    # Cache-bust the module URL with the integration version, otherwise the
+    # browser/frontend keeps serving an old panel.js from the fixed URL.
+    try:
+        integration = await async_get_integration(hass, DOMAIN)
+        version = str(integration.version or "")
+    except Exception:  # noqa: BLE001 - versioning is best-effort
+        version = ""
+    module_url = f"{PANEL_JS_URL}?v={version}" if version else PANEL_JS_URL
+
     if not frontend.async_panel_exists(hass, PANEL_URL_PATH):
         frontend.async_register_built_in_panel(
             hass,
@@ -63,7 +73,7 @@ async def async_setup_panel(hass: HomeAssistant) -> None:
             config={
                 "_panel_custom": {
                     "name": PANEL_ELEMENT,
-                    "module_url": PANEL_JS_URL,
+                    "module_url": module_url,
                     "embed_iframe": False,
                     "trust_external": False,
                 }
