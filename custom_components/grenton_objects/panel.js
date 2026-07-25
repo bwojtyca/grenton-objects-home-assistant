@@ -1,12 +1,14 @@
 /*
  * Grenton Objects — OM project analysis panel.
  *
- * A custom Home Assistant panel (opened from the integration page). Uploads an
- * Object Manager project (.omp), sends it to the `grenton_objects/analyze`
+ * A custom Home Assistant panel (opened via the /grenton_objects URL). Uploads
+ * an Object Manager project (.omp), sends it to the `grenton_objects/analyze`
  * websocket command and renders a read-only reconciliation report against the
  * live Home Assistant configuration:
  *   - a plain-text summary (problems highlighted), and
- *   - one filterable, full-height table of every object (project ∪ HA).
+ *   - one table of every object (project ∪ HA), using the native ha-data-table
+ *     (sorting, search, alignment) with a coloured status column and quick
+ *     filters. DIN/Satel inputs are hidden by default (toggle to include them).
  *
  * Repository: https://github.com/bwojtyca/grenton-objects-home-assistant
  */
@@ -32,7 +34,6 @@ const SEV_COLOR = {
   muted: "var(--secondary-text-color, #888)",
 };
 
-// Status + severity derived from a merged-row's flags.
 function statusInfo(row) {
   if (row.flags.includes("orphan")) return { label: "Błąd: brak w projekcie", sev: "error", cat: "problem" };
   if (row.flags.includes("push_no_event")) return { label: "Błąd: push bez zdarzenia", sev: "error", cat: "problem" };
@@ -53,9 +54,11 @@ function toBase64(buffer) {
   return btoa(binary);
 }
 
-// Best-effort: nudge HA to load its lazy element bundle so ha-card/ha-alert are styled.
+// Nudge HA to load its lazy element bundle so ha-card / ha-alert / ha-data-table
+// are defined when we use them.
 async function ensureHaComponents() {
-  if (customElements.get("ha-card") && customElements.get("ha-alert")) return;
+  const want = ["ha-card", "ha-alert", "ha-data-table"];
+  if (want.every((tag) => customElements.get(tag))) return;
   try {
     if (window.loadCardHelpers) {
       const helpers = await window.loadCardHelpers();
@@ -64,11 +67,16 @@ async function ensureHaComponents() {
   } catch (err) {
     /* best effort */
   }
+  await Promise.race([
+    customElements.whenDefined("ha-data-table"),
+    new Promise((resolve) => setTimeout(resolve, 4000)),
+  ]);
 }
 
 class GrentonObjectsPanel extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
+    if (this._dataTable) this._dataTable.hass = hass;
     if (!this._built) this._build();
   }
   set narrow(value) {}
@@ -78,12 +86,6 @@ class GrentonObjectsPanel extends HTMLElement {
   _build() {
     this._built = true;
     ensureHaComponents();
-
-    // Filter state.
-    this._rows = [];
-    this._search = "";
-    this._onlyProblems = false;
-    this._onlyMissing = false;
 
     this.style.display = "block";
     this.style.padding = "16px";
@@ -123,6 +125,7 @@ class GrentonObjectsPanel extends HTMLElement {
 
   async _analyze(file) {
     this._results.innerHTML = "";
+    this._dataTable = null;
     this._statusLine.textContent = `${T.analyzing} (${file.name})`;
     try {
       const buffer = await file.arrayBuffer();
@@ -167,11 +170,7 @@ class GrentonObjectsPanel extends HTMLElement {
     box.style.cssText = "padding:16px;line-height:1.7";
 
     const domains = Object.keys(s.per_domain)
-      .sort((a, b) => {
-        const ta = s.per_domain[a].push + s.per_domain[a].polling;
-        const tb = s.per_domain[b].push + s.per_domain[b].polling;
-        return tb - ta;
-      })
+      .sort((a, b) => s.per_domain[b].push + s.per_domain[b].polling - (s.per_domain[a].push + s.per_domain[a].polling))
       .map((d) => `${d} (${s.per_domain[d].push} push / ${s.per_domain[d].polling} polling)`)
       .join(" · ");
 
@@ -183,7 +182,6 @@ class GrentonObjectsPanel extends HTMLElement {
       `<span style="color:var(--secondary-text-color)">Wg domeny: ${domains}</span>`;
     box.appendChild(totals);
 
-    // Problems — plain text lines, coloured when non-zero.
     const problems = [
       { label: "encje HA bez obiektu w projekcie", count: report.orphans.length, sev: "error" },
       { label: "encje push bez zdarzenia w Grentonie", count: report.push_no_event.length, sev: "error" },
@@ -213,7 +211,9 @@ class GrentonObjectsPanel extends HTMLElement {
     if (report.input_not_in_ha_count) {
       const note = document.createElement("div");
       note.style.cssText = "margin-top:8px;color:var(--secondary-text-color);font-size:0.9em";
-      note.textContent = `Pominięto ${report.input_not_in_ha_count} wejść DIN/Satel (przyciski/wejścia alarmu) — zwykle nie są encjami HA.`;
+      note.textContent =
+        `Wejścia DIN/Satel (${report.input_not_in_ha_count}, np. przyciski ścienne / wejścia alarmu) ` +
+        `są domyślnie ukryte w tabeli poniżej — zaznacz „Pokaż wejścia (DIN/Satel)", aby je uwzględnić.`;
       box.appendChild(note);
     }
 
@@ -221,24 +221,32 @@ class GrentonObjectsPanel extends HTMLElement {
     return card;
   }
 
+  // ─── all-objects table ────────────────────────────────────────────────
+
   _objectsCard(report) {
-    this._rows = report.merged.map((r) => {
+    this._allRows = report.merged.map((r, i) => {
       const st = statusInfo(r);
       return {
+        id: r.grenton_id || r.entity_id || String(i),
         name: r.om_name || r.ha_name || "",
         grenton_id: r.grenton_id || "",
         type: r.om_type || r.device_type || "",
         entity_id: r.entity_id || "",
-        update: r.in_ha ? r.mode || "" : "", // blank when the object is not in HA
+        update: r.in_ha ? r.mode || "" : "",
         status: st.label,
         sev: st.sev,
         cat: st.cat,
         is_missing: r.flags.includes("not_in_ha"),
+        is_input: !!r.is_input,
       };
     });
+    this._search = "";
+    this._fProblems = false;
+    this._fMissing = false;
+    this._fInputs = false;
 
     const card = document.createElement("ha-card");
-    card.setAttribute("header", `Wszystkie obiekty (${this._rows.length})`);
+    card.setAttribute("header", `Wszystkie obiekty (${this._allRows.length})`);
     const box = document.createElement("div");
     box.style.padding = "8px 16px 16px";
 
@@ -250,27 +258,19 @@ class GrentonObjectsPanel extends HTMLElement {
 
     box.appendChild(this._toolbar());
 
-    // Column container: horizontal scroll only, so the page (not the table)
-    // scrolls vertically and the table stretches to its full height.
-    const scroll = document.createElement("div");
-    scroll.style.overflowX = "auto";
-    this._table = document.createElement("table");
-    this._table.style.cssText = "width:100%;border-collapse:collapse;font-size:0.95em";
-    this._table.appendChild(this._thead());
-    this._tbody = document.createElement("tbody");
-    this._table.appendChild(this._tbody);
-    scroll.appendChild(this._table);
-    box.appendChild(scroll);
+    this._tableHost = document.createElement("div");
+    this._tableHost.style.marginTop = "8px";
+    box.appendChild(this._tableHost);
 
     card.appendChild(box);
+    this._buildTable();
     this._applyFilter();
     return card;
   }
 
   _toolbar() {
     const bar = document.createElement("div");
-    bar.style.cssText =
-      "display:flex;flex-wrap:wrap;gap:16px;align-items:center;margin-bottom:12px";
+    bar.style.cssText = "display:flex;flex-wrap:wrap;gap:16px;align-items:center;margin-bottom:8px";
 
     const search = document.createElement("input");
     search.type = "search";
@@ -293,18 +293,11 @@ class GrentonObjectsPanel extends HTMLElement {
       return label;
     };
 
-    bar.appendChild(search);
-    bar.appendChild(
-      mkCheck("Tylko problemy", (v) => {
-        this._onlyProblems = v;
-        this._applyFilter();
-      })
-    );
-    bar.appendChild(
-      mkCheck("Tylko brakujące w HA", (v) => {
-        this._onlyMissing = v;
-        this._applyFilter();
-      })
+    bar.append(
+      search,
+      mkCheck("Tylko problemy", (v) => { this._fProblems = v; this._applyFilter(); }),
+      mkCheck("Tylko brakujące w HA", (v) => { this._fMissing = v; this._applyFilter(); }),
+      mkCheck("Pokaż wejścia (DIN/Satel)", (v) => { this._fInputs = v; this._applyFilter(); })
     );
 
     this._count = document.createElement("span");
@@ -313,69 +306,102 @@ class GrentonObjectsPanel extends HTMLElement {
     return bar;
   }
 
-  _thead() {
-    const cols = ["Nazwa (Grenton)", "Grenton ID", "Typ", "Encja HA", "Aktualizacja", "Status"];
-    const thead = document.createElement("thead");
-    const tr = document.createElement("tr");
-    cols.forEach((c) => {
-      const th = document.createElement("th");
-      th.textContent = c;
-      th.style.cssText =
-        "text-align:left;padding:8px;border-bottom:2px solid var(--divider-color);" +
-        "white-space:nowrap;position:sticky;top:0;background:var(--card-background-color);z-index:1";
-      tr.appendChild(th);
-    });
-    thead.appendChild(tr);
-    return thead;
+  _columns() {
+    const statusTemplate = (a, b) => this._statusNode((a && typeof a === "object") ? a : b);
+    return {
+      name: { title: "Nazwa (Grenton)", sortable: true, filterable: true, grows: true },
+      grenton_id: { title: "Grenton ID", sortable: true, filterable: true, width: "180px" },
+      type: { title: "Typ", sortable: true, filterable: true, width: "150px" },
+      entity_id: { title: "Encja HA", sortable: true, filterable: true, width: "230px" },
+      update: { title: "Aktualizacja", sortable: true, filterable: true, width: "130px" },
+      status: { title: "Status", sortable: true, filterable: true, width: "220px", template: statusTemplate },
+    };
+  }
+
+  _statusNode(row) {
+    const span = document.createElement("span");
+    span.textContent = row ? row.status : "";
+    const sev = row ? row.sev : "muted";
+    span.style.cssText =
+      `display:inline-block;padding:2px 10px;border-radius:12px;white-space:nowrap;` +
+      `font-size:0.85em;color:${SEV_COLOR[sev]};border:1px solid ${SEV_COLOR[sev]}`;
+    return span;
+  }
+
+  _buildTable() {
+    if (customElements.get("ha-data-table")) {
+      const table = document.createElement("ha-data-table");
+      table.hass = this._hass;
+      table.columns = this._columns();
+      table.autoHeight = true;
+      table.setAttribute("auto-height", "");
+      table.clickable = false;
+      this._dataTable = table;
+      this._tableHost.appendChild(table);
+    } else {
+      // Fallback: themed HTML table (no native sort/resize).
+      this._dataTable = null;
+      const scroll = document.createElement("div");
+      scroll.style.overflowX = "auto";
+      const table = document.createElement("table");
+      table.style.cssText = "width:100%;border-collapse:collapse;font-size:0.95em";
+      const thead = document.createElement("thead");
+      const tr = document.createElement("tr");
+      ["Nazwa (Grenton)", "Grenton ID", "Typ", "Encja HA", "Aktualizacja", "Status"].forEach((c) => {
+        const th = document.createElement("th");
+        th.textContent = c;
+        th.style.cssText =
+          "text-align:left;padding:8px;border-bottom:2px solid var(--divider-color);white-space:nowrap;" +
+          "position:sticky;top:0;background:var(--card-background-color);z-index:1";
+        tr.appendChild(th);
+      });
+      thead.appendChild(tr);
+      this._fallbackBody = document.createElement("tbody");
+      table.append(thead, this._fallbackBody);
+      scroll.appendChild(table);
+      this._tableHost.appendChild(scroll);
+    }
+  }
+
+  _filteredRows() {
+    let rows = this._allRows;
+    if (!this._fInputs) rows = rows.filter((r) => !r.is_input);
+    if (this._fProblems || this._fMissing) {
+      rows = rows.filter(
+        (r) => (this._fProblems && r.cat === "problem") || (this._fMissing && r.is_missing)
+      );
+    }
+    if (this._search) {
+      rows = rows.filter((r) =>
+        `${r.name} ${r.grenton_id} ${r.type} ${r.entity_id} ${r.status}`.toLowerCase().includes(this._search)
+      );
+    }
+    return rows;
   }
 
   _applyFilter() {
-    const rows = this._rows.filter((r) => {
-      if (this._onlyProblems || this._onlyMissing) {
-        const okProblem = this._onlyProblems && r.cat === "problem";
-        const okMissing = this._onlyMissing && r.is_missing;
-        if (!okProblem && !okMissing) return false;
-      }
-      if (this._search) {
-        const hay = `${r.name} ${r.grenton_id} ${r.type} ${r.entity_id} ${r.status}`.toLowerCase();
-        if (!hay.includes(this._search)) return false;
-      }
-      return true;
-    });
-
-    this._tbody.replaceChildren();
-    rows.forEach((r) => this._tbody.appendChild(this._row(r)));
-    if (this._count) this._count.textContent = `Pokazano ${rows.length} z ${this._rows.length}`;
-  }
-
-  _row(r) {
-    const tr = document.createElement("tr");
-    const cells = [
-      { text: r.name },
-      { text: r.grenton_id, mono: true },
-      { text: r.type },
-      { text: r.entity_id, mono: true },
-      { text: r.update },
-      { status: true },
-    ];
-    cells.forEach((c) => {
-      const td = document.createElement("td");
-      td.style.cssText =
-        "padding:6px 8px;border-bottom:1px solid var(--divider-color);vertical-align:top";
-      if (c.mono) td.style.fontFamily = "var(--code-font-family, monospace)";
-      if (c.status) {
-        const chip = document.createElement("span");
-        chip.textContent = r.status;
-        chip.style.cssText =
-          `display:inline-block;padding:2px 10px;border-radius:12px;white-space:nowrap;` +
-          `font-size:0.85em;color:${SEV_COLOR[r.sev]};border:1px solid ${SEV_COLOR[r.sev]}`;
-        td.appendChild(chip);
-      } else {
-        td.textContent = c.text == null ? "" : String(c.text);
-      }
-      tr.appendChild(td);
-    });
-    return tr;
+    const rows = this._filteredRows();
+    if (this._dataTable) {
+      this._dataTable.data = rows;
+    } else if (this._fallbackBody) {
+      this._fallbackBody.replaceChildren();
+      rows.forEach((r) => {
+        const tr = document.createElement("tr");
+        [r.name, r.grenton_id, r.type, r.entity_id, r.update].forEach((val, idx) => {
+          const td = document.createElement("td");
+          td.textContent = val == null ? "" : String(val);
+          td.style.cssText = "padding:6px 8px;border-bottom:1px solid var(--divider-color);vertical-align:top";
+          if (idx === 1 || idx === 3) td.style.fontFamily = "var(--code-font-family, monospace)";
+          tr.appendChild(td);
+        });
+        const tdStatus = document.createElement("td");
+        tdStatus.style.cssText = "padding:6px 8px;border-bottom:1px solid var(--divider-color)";
+        tdStatus.appendChild(this._statusNode(r));
+        tr.appendChild(tdStatus);
+        this._fallbackBody.appendChild(tr);
+      });
+    }
+    if (this._count) this._count.textContent = `Pokazano ${rows.length} z ${this._allRows.length}`;
   }
 }
 
