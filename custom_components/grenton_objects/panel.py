@@ -100,6 +100,8 @@ async def ws_analyze_project(hass, connection, msg) -> None:
         return
 
     ha_objects = report.collect_ha_objects(hass)
-    result = report.build_report(parsed["objects"], parsed["push_events"], ha_objects)
+    result = report.build_report(
+        parsed["objects"], parsed["push_events"], ha_objects, parsed.get("all_names")
+    )
     result["clus"] = parsed["clus"]
     connection.send_result(msg["id"], result)

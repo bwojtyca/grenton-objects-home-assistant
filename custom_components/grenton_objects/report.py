@@ -38,10 +38,40 @@ _PUSH_EVENT_RE = re.compile(
     r'HA_Integration_Queue_Prepare\(\s*"([^"]+)"\s*,\s*"([^"]+)"\s*,\s*([^,)]+)'
 )
 
-# Object types that are pure inputs (wall buttons / alarm inputs driving Grenton
-# logic). They are rarely meant to be Home Assistant entities, so they are kept
-# out of the "missing from HA" list to avoid noise (but still counted).
-_INPUT_ONLY_TYPES = {"DIN", "SatelInput", "Satel"}
+# OM object types the integration cannot represent as an HA entity. These are
+# the only objects excluded from the "missing from HA" count and shown with a
+# "nieobsługiwany" status. Everything else (incl. DIN) is treated uniformly —
+# the user decides what to show via the panel's type filter.
+_UNSUPPORTED_OM_TYPES = {"DALI_MASTER", "Satel"}
+
+# Which grenton_objects services are valid for each HA entity domain. Used to
+# flag push events wired with a service that does not match the target entity.
+# An empty set means "do not check" (permissive).
+_DOMAIN_SERVICES = {
+    "light": {"set_state", "set_brightness", "set_rgb", "set_rgbw"},
+    "switch": {"set_state"},
+    "binary_sensor": {"set_state"},
+    "cover": {"set_cover"},
+    "sensor": {"set_value"},
+    "climate": {"set_therm_state", "set_therm_target_temp", "set_therm_current_temp"},
+    "button": set(),
+    "alarm_control_panel": set(),
+}
+
+# Grenton-side objects/scripts the integration's documentation requires. The
+# listener pair is always needed; the queue objects are needed only when push
+# (dynamic) updates are used.
+_REQUIRED_LISTENER_OBJECTS = {
+    "HA_Integration_Listener": "HTTPListener odbierający zapytania z HA",
+    "HA_Integration_Script": "skrypt OnRequest listenera",
+}
+_REQUIRED_PUSH_OBJECTS = {
+    "HA_Integration_Queue_Prepare": "skrypt kolejki (przygotowanie)",
+    "HA_Integration_Process_Queue": "skrypt kolejki (wysyłka)",
+    "HA_Request_Grenton_Set": "HTTPRequest wysyłający do HA",
+    "HA_Integration_Process_Queue_Timer": "timer kolejki",
+    "queueHA": "cecha użytkownika kolejki",
+}
 
 
 # ─── OM project parsing ─────────────────────────────────────────────────────
@@ -142,12 +172,24 @@ def parse_system_xml(xml_bytes: bytes) -> dict:
             "ha_entity": ha_entity,
             "service": service,
             "src_obj": parts[1] if len(parts) >= 2 else source.strip(),
+            "src_feature": parts[2] if len(parts) >= 3 else None,
         })
+
+    # Every named element in the project — used to check that the required
+    # Grenton-side objects/scripts exist (see _REQUIRED_* constants). Names are
+    # specific enough (HA_Integration_*, queueHA, …) not to clash with generic
+    # feature names like "Value".
+    all_names = {
+        node.text.strip()
+        for node in root.iter("name")
+        if node.text and node.text.strip()
+    }
 
     return {
         "objects": list(unique.values()),
         "push_events": push_events,
         "clus": sorted(clus.values(), key=lambda c: c["clu"]),
+        "all_names": all_names,
     }
 
 
@@ -226,17 +268,35 @@ def collect_ha_objects(hass) -> list[dict]:
 
 # ─── Reconciliation (pure) ──────────────────────────────────────────────────
 
-def build_report(om_objects: list[dict], push_events: list[dict], ha_objects: list[dict]) -> dict:
+def _type_summary(om_objects: list[dict]) -> list[dict]:
+    """Every Grenton type present, with its count and whether HA supports it."""
+    counts = Counter(o["type"] for o in om_objects)
+    return [
+        {"type": t, "count": c, "supported": t not in _UNSUPPORTED_OM_TYPES}
+        for t, c in counts.most_common()
+    ]
+
+
+def build_report(
+    om_objects: list[dict],
+    push_events: list[dict],
+    ha_objects: list[dict],
+    project_names: set | None = None,
+) -> dict:
     """Reconcile the OM project against the HA configuration.
 
-    All inputs are plain lists of dicts (see ``parse_omp`` / ``collect_ha_objects``)
-    so this stays pure and unit-testable.
+    All inputs are plain lists/sets (see ``parse_omp`` / ``collect_ha_objects``)
+    so this stays pure and unit-testable. ``project_names`` (from
+    ``parse_system_xml``) enables the Grenton-side scaffolding check.
     """
     om_by_norm = {}
     om_by_object_id = {}
+    om_by_name = {}
     for obj in om_objects:
         om_by_norm[_normalize_grenton_id(obj["grenton_id"])] = obj
         om_by_object_id[_object_id(obj["grenton_id"])] = obj
+        if obj.get("name"):
+            om_by_name.setdefault(obj["name"], obj)
 
     push_targets = {event["ha_entity"] for event in push_events}
 
@@ -264,25 +324,60 @@ def build_report(om_objects: list[dict], push_events: list[dict], ha_objects: li
             "has_push_event": bool(entity_id) and entity_id in push_targets,
         })
 
+    ha_by_entity = {r["entity_id"]: r for r in rows if r["entity_id"]}
+
     # Reconciliation buckets.
     orphans = [r for r in rows if not r["in_om"]]
     push_no_event = [r for r in rows if r["mode"] == "push" and not r["has_push_event"]]
     poll_with_push = [r for r in rows if r["mode"] == "polling" and r["has_push_event"]]
 
-    ha_entity_ids = {r["entity_id"] for r in rows if r["entity_id"]}
+    ha_entity_ids = set(ha_by_entity)
     push_orphan_targets = sorted(push_targets - ha_entity_ids)
+
+    # Push-event correctness checks (only for events that hit a known entity).
+    push_service_mismatch = []
+    push_object_mismatch = []
+    for event in push_events:
+        r = ha_by_entity.get(event["ha_entity"])
+        if not r:
+            continue
+        allowed = _DOMAIN_SERVICES.get(r["device_type"])
+        if allowed and event["service"] not in allowed:
+            push_service_mismatch.append({
+                "ha_entity": event["ha_entity"],
+                "device_type": r["device_type"],
+                "service": event["service"],
+            })
+        src = om_by_name.get(event["src_obj"])
+        if src and _object_id(src["grenton_id"]) != _object_id(r["grenton_id"]):
+            push_object_mismatch.append({
+                "ha_entity": event["ha_entity"],
+                "entity_grenton_id": r["grenton_id"],
+                "source_grenton_id": src["grenton_id"],
+                "source_name": event["src_obj"],
+            })
+    bad_service_entities = {m["ha_entity"] for m in push_service_mismatch}
+    wrong_object_entities = {m["ha_entity"] for m in push_object_mismatch}
 
     ha_norm_ids = {_normalize_grenton_id(r["grenton_id"]) for r in rows}
     not_in_ha = [
         obj for obj in om_objects
-        if obj["type"] not in _INPUT_ONLY_TYPES
+        if obj["type"] not in _UNSUPPORTED_OM_TYPES
         and _normalize_grenton_id(obj["grenton_id"]) not in ha_norm_ids
     ]
-    input_not_in_ha = [
-        obj for obj in om_objects
-        if obj["type"] in _INPUT_ONLY_TYPES
-        and _normalize_grenton_id(obj["grenton_id"]) not in ha_norm_ids
-    ]
+    unsupported_objects = [obj for obj in om_objects if obj["type"] in _UNSUPPORTED_OM_TYPES]
+
+    # Grenton-side scaffolding check (README requirements).
+    push_used = bool(push_events) or any(r["mode"] == "push" for r in rows)
+    scaffolding = None
+    if project_names is not None:
+        checks = []
+        for name, desc in _REQUIRED_LISTENER_OBJECTS.items():
+            checks.append({"name": name, "desc": desc, "present": name in project_names, "required": True})
+        for name, desc in _REQUIRED_PUSH_OBJECTS.items():
+            checks.append({"name": name, "desc": desc, "present": name in project_names, "required": push_used})
+        missing = [c for c in checks if c["required"] and not c["present"]]
+        scaffolding = {"checks": checks, "missing": missing, "push_used": push_used}
 
     # Per-domain polling/push breakdown.
     per_domain = {}
@@ -296,27 +391,35 @@ def build_report(om_objects: list[dict], push_events: list[dict], ha_objects: li
     for r in rows:
         ha_by_norm.setdefault(_normalize_grenton_id(r["grenton_id"]), r)
 
+    def _row_flags(obj_type, r):
+        flags = []
+        if r is None:
+            if obj_type not in _UNSUPPORTED_OM_TYPES:
+                flags.append("not_in_ha")
+            return flags
+        if r["entity_id"] in wrong_object_entities:
+            flags.append("push_wrong_object")
+        if r["entity_id"] in bad_service_entities:
+            flags.append("push_bad_service")
+        if r["mode"] == "push" and not r["has_push_event"]:
+            flags.append("push_no_event")
+        if r["mode"] == "polling" and r["has_push_event"]:
+            flags.append("poll_redundant")
+        return flags
+
     merged = []
     seen_norm = set()
     for obj in om_objects:
         norm = _normalize_grenton_id(obj["grenton_id"])
         seen_norm.add(norm)
         r = ha_by_norm.get(norm)
-        is_input = obj["type"] in _INPUT_ONLY_TYPES
-        flags = []
-        if r is None and not is_input:
-            flags.append("not_in_ha")
-        if r is not None:
-            if r["mode"] == "push" and not r["has_push_event"]:
-                flags.append("push_no_event")
-            if r["mode"] == "polling" and r["has_push_event"]:
-                flags.append("poll_redundant")
         merged.append({
             "grenton_id": obj["grenton_id"],
             "clu": obj.get("clu"),
             "om_name": obj["name"],
             "om_type": obj["type"],
-            "is_input": is_input,
+            "is_din": obj["type"] == "DIN",
+            "is_unsupported": obj["type"] in _UNSUPPORTED_OM_TYPES,
             "in_om": True,
             "in_ha": r is not None,
             "entity_id": r["entity_id"] if r else None,
@@ -325,17 +428,23 @@ def build_report(om_objects: list[dict], push_events: list[dict], ha_objects: li
             "mode": r["mode"] if r else None,
             "interval": r["interval"] if r else None,
             "area": r["area"] if r else None,
-            "flags": flags,
+            "flags": _row_flags(obj["type"], r),
         })
 
     for r in rows:
         if _normalize_grenton_id(r["grenton_id"]) not in seen_norm:
+            flags = ["orphan"]
+            if r["entity_id"] in wrong_object_entities:
+                flags.append("push_wrong_object")
+            if r["entity_id"] in bad_service_entities:
+                flags.append("push_bad_service")
             merged.append({
                 "grenton_id": r["grenton_id"],
                 "clu": None,
                 "om_name": None,
                 "om_type": None,
-                "is_input": False,
+                "is_din": False,
+                "is_unsupported": False,
                 "in_om": False,
                 "in_ha": True,
                 "entity_id": r["entity_id"],
@@ -344,10 +453,15 @@ def build_report(om_objects: list[dict], push_events: list[dict], ha_objects: li
                 "mode": r["mode"],
                 "interval": r["interval"],
                 "area": r["area"],
-                "flags": ["orphan"],
+                "flags": flags,
             })
 
-    verdict = "ok" if not (orphans or push_no_event or push_orphan_targets) else "issues"
+    has_issue = bool(
+        orphans or push_no_event or push_orphan_targets
+        or push_service_mismatch or push_object_mismatch
+        or (scaffolding and scaffolding["missing"])
+    )
+    verdict = "issues" if has_issue else "ok"
 
     return {
         "verdict": verdict,
@@ -364,11 +478,15 @@ def build_report(om_objects: list[dict], push_events: list[dict], ha_objects: li
         },
         "orphans": orphans,
         "push_no_event": push_no_event,
+        "push_service_mismatch": push_service_mismatch,
+        "push_object_mismatch": push_object_mismatch,
         "poll_with_push": poll_with_push,
         "push_orphan_targets": push_orphan_targets,
         "not_in_ha": not_in_ha,
         "not_in_ha_by_type": Counter(o["type"] for o in not_in_ha).most_common(),
-        "input_not_in_ha_count": len(input_not_in_ha),
+        "unsupported_count": len(unsupported_objects),
+        "type_summary": _type_summary(om_objects),
+        "scaffolding": scaffolding,
         "rows": rows,
         "merged": merged,
     }

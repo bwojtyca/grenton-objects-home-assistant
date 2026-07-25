@@ -138,14 +138,19 @@ def _scenario():
         {"clu": "CLU1", "obj_id": "DOU1", "grenton_id": "CLU1->DOU1", "name": "L1", "type": "DOUT"},
         {"clu": "CLU1", "obj_id": "ROL1", "grenton_id": "CLU1->ROL1", "name": "R1", "type": "ROLLER_SHUTTER"},
         {"clu": "CLU1", "obj_id": "DOU2", "grenton_id": "CLU1->DOU2", "name": "L2", "type": "DOUT"},
+        {"clu": "CLU1", "obj_id": "DOU3", "grenton_id": "CLU1->DOU3", "name": "L3", "type": "DOUT"},
+        {"clu": "CLU1", "obj_id": "DOU5", "grenton_id": "CLU1->DOU5", "name": "L5", "type": "DOUT"},
         {"clu": "CLU1", "obj_id": "DOU9", "grenton_id": "CLU1->DOU9", "name": "L9", "type": "DOUT"},
         {"clu": "CLU1", "obj_id": "DIN1", "grenton_id": "CLU1->DIN1", "name": "B1", "type": "DIN"},
         {"clu": "CLU1", "obj_id": "DIN2", "grenton_id": "CLU1->DIN2", "name": "B2", "type": "DIN"},
+        {"clu": "CLU1", "obj_id": "DAL1", "grenton_id": "CLU1->DAL1", "name": "Master", "type": "DALI_MASTER"},
     ]
     push_events = [
         {"ha_entity": "light.l1", "service": "set_state", "src_obj": "L1"},
         {"ha_entity": "light.l2poll", "service": "set_state", "src_obj": "L2"},
         {"ha_entity": "binary_sensor.ghost", "service": "set_state", "src_obj": "X"},
+        {"ha_entity": "light.badservice", "service": "set_cover", "src_obj": "L3"},  # wrong service for light
+        {"ha_entity": "switch.wrongobj", "service": "set_state", "src_obj": "L1"},  # L1 != DOU5
     ]
     ha_objects = [
         {"entity_id": "light.l1", "name": "L1", "device_type": "light",
@@ -157,9 +162,13 @@ def _scenario():
         {"entity_id": "switch.orphan", "name": "O", "device_type": "switch",
          "grenton_id": "CLU1->DOU404", "auto_update": True},
         {"entity_id": "light.l2poll", "name": "L2", "device_type": "light",
-         "grenton_id": "CLU1->DOU2", "auto_update": True},
+         "grenton_id": "CLU1->DOU2", "auto_update": True, "update_interval": 30},
+        {"entity_id": "light.badservice", "name": "L3", "device_type": "light",
+         "grenton_id": "CLU1->DOU3", "auto_update": False},
+        {"entity_id": "switch.wrongobj", "name": "L5", "device_type": "switch",
+         "grenton_id": "CLU1->DOU5", "auto_update": False},
     ]
-    return report.build_report(om_objects, push_events, ha_objects)
+    return report.build_report(om_objects, push_events, ha_objects, {"HA_Integration_Listener"})
 
 
 def test_build_report_buckets():
@@ -171,21 +180,42 @@ def test_build_report_buckets():
     assert [r["entity_id"] for r in result["poll_with_push"]] == ["light.l2poll"]
 
 
-def test_build_report_not_in_ha_excludes_inputs():
+def test_build_report_push_service_mismatch():
+    result = _scenario()
+    assert [m["ha_entity"] for m in result["push_service_mismatch"]] == ["light.badservice"]
+
+
+def test_build_report_push_object_mismatch():
+    result = _scenario()
+    assert len(result["push_object_mismatch"]) == 1
+    m = result["push_object_mismatch"][0]
+    assert m["ha_entity"] == "switch.wrongobj"
+    assert m["entity_grenton_id"] == "CLU1->DOU5"
+    assert m["source_grenton_id"] == "CLU1->DOU1"
+
+
+def test_build_report_not_in_ha_includes_din_excludes_unsupported():
     result = _scenario()
     not_in_ha_ids = {o["grenton_id"] for o in result["not_in_ha"]}
-    assert not_in_ha_ids == {"CLU1->DOU9"}          # DOU9 is notable and missing
-    assert not any(o["type"] == "DIN" for o in result["not_in_ha"])
-    assert result["input_not_in_ha_count"] == 1     # DIN2 missing, counted separately
+    assert not_in_ha_ids == {"CLU1->DOU9", "CLU1->DIN2"}  # DIN now counted, no special-casing
+    assert not any(o["type"] == "DALI_MASTER" for o in result["not_in_ha"])  # unsupported excluded
+    assert result["unsupported_count"] == 1
 
 
-def test_build_report_summary_counts():
-    summary = _scenario()["summary"]
-    assert summary["ha_total"] == 5
-    assert summary["om_total"] == 6
-    assert summary["push_events"] == 3
-    assert summary["push"] == 2
-    assert summary["polling"] == 3
+def test_build_report_type_summary():
+    summary = {t["type"]: t for t in _scenario()["type_summary"]}
+    assert summary["DOUT"]["count"] == 5
+    assert summary["DOUT"]["supported"] is True
+    assert summary["DIN"]["supported"] is True
+    assert summary["DALI_MASTER"]["supported"] is False
+
+
+def test_build_report_scaffolding():
+    # project_names has the listener but not the script → one required item missing.
+    result = _scenario()
+    missing = {m["name"] for m in result["scaffolding"]["missing"]}
+    assert "HA_Integration_Script" in missing
+    assert "HA_Integration_Listener" not in missing
 
 
 def test_build_report_clean_verdict():
@@ -193,25 +223,25 @@ def test_build_report_clean_verdict():
     push_events = [{"ha_entity": "light.l1", "service": "set_state", "src_obj": "L1"}]
     ha_objects = [{"entity_id": "light.l1", "name": "L1", "device_type": "light",
                    "grenton_id": "CLU1->DOU1", "auto_update": False}]
-    result = report.build_report(om_objects, push_events, ha_objects)
+    result = report.build_report(om_objects, push_events, ha_objects)  # no project_names → skip scaffolding
     assert result["verdict"] == "ok"
+    assert result["scaffolding"] is None
 
 
 # ─── merged (union) table ───────────────────────────────────────────────────
 
-def test_build_report_merged_union_and_flags():
+def test_build_report_merged_flags_and_fields():
     merged = _scenario()["merged"]
     by_id = {r["grenton_id"]: r for r in merged}
 
-    # One row per OM object plus HA-only orphans.
-    assert len(merged) == 7  # 6 OM objects + 1 HA orphan (switch.orphan)
-
-    assert by_id["CLU1->DOU1"]["in_ha"] is True
-    assert by_id["CLU1->DOU1"]["flags"] == []
+    assert by_id["CLU1->DOU1"]["in_ha"] is True and by_id["CLU1->DOU1"]["flags"] == []
     assert by_id["CLU1->ROL1"]["flags"] == ["push_no_event"]
     assert by_id["CLU1->DOU2"]["flags"] == ["poll_redundant"]
+    assert by_id["CLU1->DOU3"]["flags"] == ["push_bad_service"]
+    assert by_id["CLU1->DOU5"]["flags"] == ["push_wrong_object"]
     assert by_id["CLU1->DOU9"]["flags"] == ["not_in_ha"]
-    assert by_id["CLU1->DIN2"]["is_input"] is True and by_id["CLU1->DIN2"]["flags"] == []
+    assert by_id["CLU1->DIN2"]["is_din"] is True and by_id["CLU1->DIN2"]["flags"] == ["not_in_ha"]
+    assert by_id["CLU1->DAL1"]["is_unsupported"] is True and by_id["CLU1->DAL1"]["flags"] == []
 
     orphan = by_id["CLU1->DOU404"]
     assert orphan["in_om"] is False and orphan["flags"] == ["orphan"]
