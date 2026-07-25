@@ -169,7 +169,7 @@ export class GrentonObjectsPanel extends LitElement {
     .issue { line-height: 1.5; max-width: 460px; }
     .issue-sec { margin-bottom: 12px; }
     .issue-h { font-weight: 600; margin-bottom: 2px; }
-    .dialog-footer { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; padding: 8px 24px 16px; }
+    .dialog-footer { display: flex; gap: var(--ha-space-3, 12px); justify-content: flex-end; align-items: center; flex-wrap: wrap; padding: 8px 24px 16px; }
   `;
 
   protected shouldUpdate(changed: PropertyValues): boolean {
@@ -564,10 +564,10 @@ export class GrentonObjectsPanel extends LitElement {
                 Konfiguruj encję
               </ha-button>`
             : nothing}
-          ${row.flag === "poll_redundant" && row.entry_id
-            ? html`<ha-button raised @click=${() => this._fixDisablePolling(row)}>Wyłącz polling</ha-button>`
-            : nothing}
           <ha-button appearance="plain" data-dialog="close">Zamknij</ha-button>
+          ${row.flag === "poll_redundant" && row.entry_id
+            ? html`<ha-button appearance="accent" @click=${() => this._fixDisablePolling(row)}>Wyłącz polling</ha-button>`
+            : nothing}
         </div>
       </ha-dialog>
     `;

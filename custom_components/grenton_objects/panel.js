@@ -1098,8 +1098,8 @@ let d = class extends x {
     }}>
                 Konfiguruj encję
               </ha-button>` : h}
-          ${t.flag === "poll_redundant" && t.entry_id ? c`<ha-button raised @click=${() => this._fixDisablePolling(t)}>Wyłącz polling</ha-button>` : h}
           <ha-button appearance="plain" data-dialog="close">Zamknij</ha-button>
+          ${t.flag === "poll_redundant" && t.entry_id ? c`<ha-button appearance="accent" @click=${() => this._fixDisablePolling(t)}>Wyłącz polling</ha-button>` : h}
         </div>
       </ha-dialog>
     `;
@@ -1277,7 +1277,7 @@ d.styles = me`
     .issue { line-height: 1.5; max-width: 460px; }
     .issue-sec { margin-bottom: 12px; }
     .issue-h { font-weight: 600; margin-bottom: 2px; }
-    .dialog-footer { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; padding: 8px 24px 16px; }
+    .dialog-footer { display: flex; gap: var(--ha-space-3, 12px); justify-content: flex-end; align-items: center; flex-wrap: wrap; padding: 8px 24px 16px; }
   `;
 _([
   M({ attribute: !1 })
