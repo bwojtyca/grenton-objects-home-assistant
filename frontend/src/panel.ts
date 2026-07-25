@@ -39,19 +39,38 @@ const STATUS_CATS = [
 
 const slug = (s: string) => s.replace(/[^a-zA-Z0-9]+/g, "_");
 
-const ADD_DEVICE_TYPES = ["light", "switch", "cover", "climate", "sensor", "binary_sensor"];
+const DEVICE_TYPE_LABELS: Record<string, string> = {
+  light: "Światło (light)",
+  switch: "Przełącznik (switch)",
+  cover: "Roleta / napęd (cover)",
+  climate: "Termostat (climate)",
+  sensor: "Czujnik (sensor)",
+  binary_sensor: "Czujnik binarny (binary_sensor)",
+};
 
-// Best-effort default HA device type for a Grenton object type (user can change
-// it before adding; DOUT is ambiguous light/switch → default switch).
-function inferDeviceType(omType: string): string {
+// Fallback for unknown OM types — offer everything, guess switch first.
+const ALL_DEVICE_TYPES = ["switch", "light", "cover", "climate", "sensor", "binary_sensor"];
+
+// Which HA entity types make sense for a given Grenton object type. First entry
+// is the default. A DIN input can only be a binary_sensor — never a climate.
+const DEVICE_TYPES_BY_OM: Record<string, string[]> = {
+  DOUT: ["switch", "light"], // relay: could drive a load or a lamp
+  DIN: ["binary_sensor"],
+  ROLLER_SHUTTER: ["cover"],
+  ONEW_SENSOR: ["sensor"],
+  Thermostat: ["climate"],
+  LED_CHANNEL: ["light"],
+  LEDRGB: ["light"],
+  SatelInput: ["binary_sensor"],
+  SatelOutput: ["switch"],
+  SatelZone: ["switch"],
+};
+
+function allowedDeviceTypes(omType: string): string[] {
   const t = omType || "";
-  if (t === "ROLLER_SHUTTER") return "cover";
-  if (t === "Thermostat") return "climate";
-  if (t === "ONEW_SENSOR") return "sensor";
-  if (t === "DIN" || t === "SatelInput") return "binary_sensor";
-  if (t === "SatelOutput" || t === "SatelZone") return "switch";
-  if (t.startsWith("DALI") || t.startsWith("LED")) return "light";
-  return "switch";
+  if (DEVICE_TYPES_BY_OM[t]) return DEVICE_TYPES_BY_OM[t];
+  if (t.startsWith("DALI") || t.startsWith("LED")) return ["light"];
+  return ALL_DEVICE_TYPES;
 }
 
 interface StatusInfo {
@@ -138,6 +157,8 @@ export class GrentonObjectsPanel extends LitElement {
   @state() private _busyName = "";
   @state() private _summaryOpen = false;
   @state() private _issue?: ViewRow;
+  @state() private _addRow?: ViewRow; // row being added to HA (opens the add/confirm dialog)
+  @state() private _addType = ""; // chosen HA device type in that dialog
   @state() private _columnOrder?: string[];
   @state() private _hiddenColumns?: string[];
   @state() private _search = "";
@@ -187,13 +208,8 @@ export class GrentonObjectsPanel extends LitElement {
     .issue-sec { margin-bottom: 12px; }
     .issue-h { font-weight: 600; margin-bottom: 2px; }
     .issue-action { margin-top: 6px; }
-    .add-action { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-    .add-label { display: inline-flex; align-items: center; gap: 6px; color: var(--secondary-text-color); }
-    .add-label select {
-      font: inherit; color: var(--primary-text-color);
-      background: var(--card-background-color, var(--secondary-background-color));
-      border: 1px solid var(--divider-color); border-radius: 6px; padding: 6px 8px;
-    }
+    .add-dialog ha-select { width: 100%; }
+    .add-hint { color: var(--secondary-text-color); margin: 12px 0 4px; }
     .dialog-footer { display: flex; gap: var(--ha-space-3, 12px); justify-content: flex-end; align-items: center; flex-wrap: wrap; padding: 8px 24px 16px; }
   `;
 
@@ -277,7 +293,7 @@ export class GrentonObjectsPanel extends LitElement {
     const table = customElements.get("hass-tabs-subpage-data-table")
       ? this._subpage()
       : this._fallbackTable();
-    return html`${table}${this._summaryDialog()}${this._issueDialog()}`;
+    return html`${table}${this._summaryDialog()}${this._issueDialog()}${this._addDialog()}`;
   }
 
   private _subpage() {
@@ -592,17 +608,9 @@ export class GrentonObjectsPanel extends LitElement {
               </div>`
             : nothing}
           ${row.flag === "not_in_ha" && row.grenton_id
-            ? html`<div class="issue-action add-action">
-                <label class="add-label">
-                  Typ encji:
-                  <select id="add-device-type">
-                    ${ADD_DEVICE_TYPES.map(
-                      (dt) => html`<option value=${dt} ?selected=${dt === inferDeviceType(row.type)}>${dt}</option>`
-                    )}
-                  </select>
-                </label>
-                <ha-button appearance="accent" size="small" @click=${() => this._fixAddObject(row)}>
-                  Dodaj do HA
+            ? html`<div class="issue-action">
+                <ha-button appearance="accent" size="small" @click=${() => this._openAdd(row)}>
+                  Dodaj do HA…
                 </ha-button>
               </div>`
             : nothing}
@@ -637,11 +645,69 @@ export class GrentonObjectsPanel extends LitElement {
     }
   }
 
-  private async _fixAddObject(row: ViewRow) {
-    if (!row.grenton_id) return;
-    const sel = this.renderRoot.querySelector<HTMLSelectElement>("#add-device-type");
-    const deviceType = sel?.value || inferDeviceType(row.type);
+  // Open the add/confirm dialog for a Grenton object missing in HA. The device
+  // type is preselected to the first type valid for its OM type.
+  private _openAdd(row: ViewRow) {
+    this._addType = allowedDeviceTypes(row.type)[0];
+    this._addRow = row;
     this._issue = undefined;
+  }
+
+  private _addSummary(row: ViewRow, deviceType: string): { label: string; value: string }[] {
+    return [
+      { label: "Nowa encja w HA", value: DEVICE_TYPE_LABELS[deviceType] ?? deviceType },
+      { label: "Obiekt Grenton", value: `${row.grenton_id} · typ ${row.type}` },
+      { label: "Nazwa", value: row.name || row.grenton_id },
+      { label: "Adres bramki", value: "jak w pozostałych obiektach Grenton" },
+      { label: "Aktualizacja", value: "polling co 30 s (push ustawisz później w OM)" },
+    ];
+  }
+
+  private _addDialog() {
+    const row = this._addRow;
+    if (!row) return nothing;
+    const allowed = allowedDeviceTypes(row.type);
+    const deviceType = this._addType || allowed[0];
+    return html`
+      <ha-dialog open .headerTitle=${"Dodaj obiekt do HA"} @closed=${() => (this._addRow = undefined)}>
+        <div class="add-dialog">
+          ${allowed.length > 1
+            ? html`
+                <ha-select
+                  label="Typ encji w HA"
+                  .value=${deviceType}
+                  naturalMenuWidth
+                  fixedMenuPosition
+                  @selected=${(e: any) => (this._addType = e.target.value)}
+                  @closed=${(e: Event) => e.stopPropagation()}
+                >
+                  ${allowed.map((d) => html`<ha-list-item .value=${d}>${DEVICE_TYPE_LABELS[d]}</ha-list-item>`)}
+                </ha-select>
+                <p class="add-hint">Typ „${row.type}" można wystawić na kilka sposobów — wybierz właściwy.</p>
+              `
+            : nothing}
+          <p class="add-hint">Po potwierdzeniu zostanie wykonane:</p>
+          <ha-list>
+            ${this._addSummary(row, deviceType).map(
+              (it) => html`<ha-list-item twoline noninteractive>
+                <span>${it.value}</span>
+                <span slot="secondary">${it.label}</span>
+              </ha-list-item>`
+            )}
+          </ha-list>
+        </div>
+        <div slot="footer" class="dialog-footer">
+          <ha-button appearance="plain" data-dialog="close">Anuluj</ha-button>
+          <ha-button appearance="accent" @click=${() => this._confirmAddObject(row)}>Dodaj do HA</ha-button>
+        </div>
+      </ha-dialog>
+    `;
+  }
+
+  private async _confirmAddObject(row: ViewRow) {
+    if (!row.grenton_id) return;
+    const deviceType = this._addType || allowedDeviceTypes(row.type)[0];
+    this._addRow = undefined;
     try {
       await this.hass.connection.sendMessagePromise({
         type: "grenton_objects/add_object",
