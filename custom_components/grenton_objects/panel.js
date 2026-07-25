@@ -48,6 +48,60 @@ const SEV_HEX = {
   muted: "#9e9e9e",
 };
 
+// ── Faithful port of HA's state color logic (common/entity/state_color.ts +
+// state_active.ts) so the entity icon is coloured exactly like HA. ────────────
+const STATE_COLORED_DOMAIN = new Set([
+  "alarm_control_panel", "alert", "automation", "binary_sensor", "calendar", "camera",
+  "climate", "cover", "device_tracker", "fan", "group", "humidifier", "input_boolean",
+  "lawn_mower", "light", "lock", "media_player", "person", "plant", "remote", "schedule",
+  "script", "siren", "sun", "switch", "timer", "update", "vacuum", "valve", "water_heater",
+  "weather",
+]);
+const TIMESTAMP_STATE_DOMAINS = new Set([
+  "ai_task", "button", "conversation", "event", "image", "infrared", "input_button",
+  "notify", "radio_frequency", "scene", "stt", "tag", "tts", "wake_word", "datetime",
+]);
+
+function haStateActive(stateObj) {
+  const domain = stateObj.entity_id.split(".")[0];
+  const s = stateObj.state;
+  if (TIMESTAMP_STATE_DOMAINS.has(domain)) return s !== "unavailable";
+  if (s === "unavailable" || s === "unknown") return false;
+  if (s === "off" && domain !== "alert") return false;
+  switch (domain) {
+    case "alarm_control_panel": return s !== "disarmed";
+    case "alert": return s !== "idle";
+    case "cover": return s !== "closed";
+    case "device_tracker":
+    case "person": return s !== "not_home";
+    case "lawn_mower": return !["docked", "paused"].includes(s);
+    case "lock": return s !== "locked";
+    case "media_player": return s !== "standby";
+    case "vacuum": return !["idle", "docked", "paused"].includes(s);
+    case "valve": return s !== "closed";
+    case "plant": return s === "problem";
+    case "group": return ["on", "home", "open", "locked", "problem"].includes(s);
+    case "timer": return s === "active";
+    case "camera": return s === "streaming";
+    default: return true;
+  }
+}
+
+function haStateColorCss(stateObj) {
+  const s = stateObj.state;
+  if (s === "unavailable") return "var(--state-unavailable-color)";
+  const domain = stateObj.entity_id.split(".")[0];
+  if (!STATE_COLORED_DOMAIN.has(domain)) return undefined;
+  const active = haStateActive(stateObj);
+  const dc = stateObj.attributes && stateObj.attributes.device_class;
+  const stateKey = String(s).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "_";
+  const activeKey = active ? "active" : "inactive";
+  const props = [];
+  if (dc) props.push(`--state-${domain}-${dc}-${stateKey}-color`);
+  props.push(`--state-${domain}-${stateKey}-color`, `--state-${domain}-${activeKey}-color`, `--state-${activeKey}-color`);
+  return props.reduceRight((str, v) => `var(${v}${str ? ", " + str : ""})`, undefined);
+}
+
 function statusInfo(row) {
   if (row.flags.includes("orphan"))
     return { label: "Błąd: brak w projekcie", sev: "error", cat: "problem",
@@ -615,33 +669,10 @@ class GrentonObjectsPanel extends HTMLElement {
     return s;
   }
 
-  // Reimplements HA's stateColorCss CSS-variable hierarchy (see
-  // common/entity/state_color.ts): active states in "coloured" domains get the
-  // domain state colour; inactive stay grey; non-coloured domains → null.
+  // Faithful HA state colour (see haStateColorCss above). Returns undefined for
+  // non-coloured domains → caller falls back to a neutral grey.
   _stateColor(stateObj) {
-    const domain = stateObj.entity_id.split(".")[0];
-    const raw = String(stateObj.state || "").toLowerCase();
-    if (raw === "unavailable") return "var(--state-unavailable-color, var(--disabled-text-color))";
-    const COLORED = new Set([
-      "alarm_control_panel", "binary_sensor", "climate", "cover", "fan", "humidifier",
-      "input_boolean", "light", "lock", "media_player", "person", "siren", "switch",
-      "update", "vacuum", "valve", "water_heater", "automation", "script", "sun",
-      "device_tracker", "group",
-    ]);
-    if (!COLORED.has(domain)) return null;
-    const INACTIVE = new Set([
-      "off", "closed", "unavailable", "unknown", "standby", "idle", "disarmed", "not_home", "auto",
-    ]);
-    const active = !INACTIVE.has(raw);
-    const state = raw.replace(/[^a-z0-9_]/g, "");
-    const dc = stateObj.attributes && stateObj.attributes.device_class;
-    const vars = [];
-    if (dc) vars.push(`--state-${domain}-${dc}-${state}-color`);
-    vars.push(`--state-${domain}-${state}-color`);
-    vars.push(`--state-${domain}-${active ? "active" : "inactive"}-color`);
-    vars.push(`--state-${active ? "active" : "inactive"}-color`);
-    const literal = active ? "#f9a825" : "var(--secondary-text-color, #9e9e9e)";
-    return vars.reduceRight((acc, v) => `var(${v}, ${acc})`, literal);
+    return haStateColorCss(stateObj);
   }
 
   _actionsNode(row) {
