@@ -49,14 +49,27 @@ const SEV_HEX = {
 };
 
 function statusInfo(row) {
-  if (row.flags.includes("orphan")) return { label: "Błąd: brak w projekcie", sev: "error", cat: "problem" };
-  if (row.flags.includes("push_wrong_object")) return { label: "Błąd: push ze złego obiektu", sev: "error", cat: "problem" };
-  if (row.flags.includes("push_bad_service")) return { label: "Błąd: zła akcja push dla typu", sev: "error", cat: "problem" };
-  if (row.flags.includes("push_no_event")) return { label: "Błąd: push bez zdarzenia", sev: "error", cat: "problem" };
-  if (row.flags.includes("poll_redundant")) return { label: "Uwaga: polling + push", sev: "warn", cat: "problem" };
+  if (row.flags.includes("orphan"))
+    return { label: "Błąd: brak w projekcie", sev: "error", cat: "problem",
+      hint: "Encja HA wskazuje grenton_id, którego nie ma w projekcie OM. Obiekt usunięto/zmieniono w OM albo encja ma zły grenton_id — popraw jedno z nich." };
+  if (row.flags.includes("push_wrong_object"))
+    return { label: "Błąd: push ze złego obiektu", sev: "error", cat: "problem",
+      hint: "Zdarzenie push aktualizuje tę encję stanem INNEGO obiektu Grentona niż jej grenton_id. Popraw źródło w zdarzeniu (OnChange) obiektu w OM." };
+  if (row.flags.includes("push_bad_service"))
+    return { label: "Błąd: zła akcja push", sev: "error", cat: "problem",
+      hint: "Akcja push nie pasuje do typu encji. Użyj: light→set_state/set_brightness/set_rgb, switch/binary_sensor→set_state, cover→set_cover, sensor→set_value." };
+  if (row.flags.includes("push_no_event"))
+    return { label: "Błąd: push bez zdarzenia", sev: "error", cat: "problem",
+      hint: "Encja jest w trybie push, ale w projekcie nie ma dla niej zdarzenia HA_Integration_Queue_Prepare. Dodaj zdarzenie OnChange w OM albo włącz polling (auto-update)." };
+  if (row.flags.includes("poll_redundant"))
+    return { label: "Uwaga: polling + push", sev: "warn", cat: "problem",
+      hint: "Encja jest pollowana i jednocześnie ma zdarzenie push — podwójna aktualizacja. Wyłącz auto-update albo usuń zdarzenie push w OM." };
   if (row.in_ha) return { label: "OK", sev: "ok", cat: "ok" };
-  if (row.is_unsupported) return { label: "Nieobsługiwany w integracji", sev: "muted", cat: "unsupported" };
-  return { label: "Brak w HA", sev: "missing", cat: "missing" };
+  if (row.is_unsupported)
+    return { label: "Nieobsługiwany w integracji", sev: "muted", cat: "unsupported",
+      hint: "Integracja nie potrafi wystawić tego typu obiektu Grentona (np. DALI_MASTER, kontener Satel)." };
+  return { label: "Brak w HA", sev: "missing", cat: "missing",
+    hint: "Obiekt istnieje w projekcie Grentona, ale nie jest dodany do HA. Dodaj go przez integrację, jeśli chcesz go używać." };
 }
 
 const STATUS_CATS = [
@@ -82,7 +95,7 @@ function toBase64(buffer) {
 }
 
 async function ensureHaComponents() {
-  const want = ["ha-card", "ha-alert", "ha-data-table", "ha-expansion-panel", "ha-label", "ha-entity-id-icon", "ha-textfield", "ha-icon", "ha-list", "ha-check-list-item"];
+  const want = ["ha-card", "ha-alert", "ha-data-table", "ha-expansion-panel", "ha-label", "state-badge", "ha-tooltip", "ha-textfield", "ha-icon", "ha-list", "ha-check-list-item"];
   if (want.every((tag) => customElements.get(tag))) return;
   try {
     if (window.loadCardHelpers) {
@@ -528,19 +541,34 @@ class GrentonObjectsPanel extends HTMLElement {
 
   _statusNode(row) {
     const sev = row ? row.sev : "muted";
+    let node;
     if (customElements.get("ha-label")) {
       const label = document.createElement("ha-label");
       label.setAttribute("dense", "");
       label.color = SEV_HEX[sev]; // ha-label derives a contrasting text color
       label.textContent = row ? row.status : "";
-      return label;
+      node = label;
+    } else {
+      const span = document.createElement("span");
+      span.textContent = row ? row.status : "";
+      span.style.cssText =
+        `display:inline-block;padding:2px 10px;border-radius:12px;white-space:nowrap;` +
+        `font-size:0.85em;color:${SEV_COLOR[sev]};border:1px solid ${SEV_COLOR[sev]}`;
+      node = span;
     }
-    const span = document.createElement("span");
-    span.textContent = row ? row.status : "";
-    span.style.cssText =
-      `display:inline-block;padding:2px 10px;border-radius:12px;white-space:nowrap;` +
-      `font-size:0.85em;color:${SEV_COLOR[sev]};border:1px solid ${SEV_COLOR[sev]}`;
-    return span;
+    const hint = row && row.hint;
+    if (hint) {
+      node.style.cursor = "help";
+      if (customElements.get("ha-tooltip")) {
+        const tip = document.createElement("ha-tooltip");
+        tip.setAttribute("content", hint);
+        tip.content = hint;
+        tip.appendChild(node);
+        return tip;
+      }
+      node.title = hint; // native fallback
+    }
+    return node;
   }
 
   _entityNode(row) {
@@ -554,15 +582,11 @@ class GrentonObjectsPanel extends HTMLElement {
     wrap.style.cssText = "display:inline-flex;align-items:center;gap:8px;cursor:pointer";
     wrap.title = "Otwórz okno encji";
     const stateObj = this._hass && this._hass.states ? this._hass.states[row.entity_id] : null;
-    // Reuse HA's entities-table icon: it colours the icon by state on its own.
-    if (customElements.get("ha-entity-id-icon")) {
-      const icon = document.createElement("ha-entity-id-icon");
-      icon.hass = this._hass;
-      icon.entityId = row.entity_id;
-      icon.setAttribute("state-title", "");
-      icon.style.cssText = "flex:0 0 auto";
-      wrap.appendChild(icon);
-    } else if (stateObj && customElements.get("state-badge")) {
+    // state-badge with color="state" applies stateColorCss → icon coloured by
+    // state (only for active states in coloured domains), same util the entity
+    // rows/cards use. (ha-entity-id-icon needs a Lit context provider we don't
+    // have, so it can't be used standalone.)
+    if (stateObj && customElements.get("state-badge")) {
       const badge = document.createElement("state-badge");
       badge.hass = this._hass;
       badge.stateObj = stateObj;
