@@ -12,6 +12,7 @@ from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.helpers.device_registry import DeviceEntry
 from .const import DOMAIN, CONF_API_ENDPOINT
+from .panel import async_setup_panel
 from homeassistant.exceptions import ServiceValidationError
 import voluptuous as vol
 from homeassistant.helpers import config_validation as cv
@@ -222,7 +223,9 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
     for name, handler, schema in services:
         hass.services.async_register(DOMAIN, name, handler, schema=schema)
-        
+
+    await async_setup_panel(hass)
+
     return True
 
 async def async_update_options(hass: HomeAssistant, entry: ConfigEntry):

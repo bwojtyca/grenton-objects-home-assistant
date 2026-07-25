@@ -113,6 +113,17 @@ def test_parse_omp_reads_zip(tmp_path):
     assert len(parsed["objects"]) == 3
 
 
+def test_parse_omp_bytes_reads_zip():
+    parsed = report.parse_omp_bytes(_make_omp())
+    assert len(parsed["objects"]) == 3
+    assert len(parsed["push_events"]) == 1
+
+
+def test_parse_omp_bytes_rejects_non_zip():
+    with pytest.raises(ValueError):
+        report.parse_omp_bytes(b"not a zip")
+
+
 def test_parse_omp_rejects_non_zip(tmp_path):
     bad = tmp_path / "bad.omp"
     bad.write_text("not a zip")
@@ -186,11 +197,26 @@ def test_build_report_clean_verdict():
     assert result["verdict"] == "ok"
 
 
-# ─── render ─────────────────────────────────────────────────────────────────
+# ─── merged (union) table ───────────────────────────────────────────────────
 
-def test_render_markdown_contains_key_facts():
-    markdown = report.render_markdown(_scenario())
-    assert isinstance(markdown, str) and markdown
-    assert "CLU1->DOU9" in markdown          # missing object listed
-    assert "switch.orphan" in markdown       # orphan listed
-    assert "⚠️" in markdown                  # issues header
+def test_build_report_merged_union_and_flags():
+    merged = _scenario()["merged"]
+    by_id = {r["grenton_id"]: r for r in merged}
+
+    # One row per OM object plus HA-only orphans.
+    assert len(merged) == 7  # 6 OM objects + 1 HA orphan (switch.orphan)
+
+    assert by_id["CLU1->DOU1"]["in_ha"] is True
+    assert by_id["CLU1->DOU1"]["flags"] == []
+    assert by_id["CLU1->ROL1"]["flags"] == ["push_no_event"]
+    assert by_id["CLU1->DOU2"]["flags"] == ["poll_redundant"]
+    assert by_id["CLU1->DOU9"]["flags"] == ["not_in_ha"]
+    assert by_id["CLU1->DIN2"]["is_input"] is True and by_id["CLU1->DIN2"]["flags"] == []
+
+    orphan = by_id["CLU1->DOU404"]
+    assert orphan["in_om"] is False and orphan["flags"] == ["orphan"]
+
+
+def test_build_report_is_json_serializable():
+    import json
+    json.dumps(_scenario())  # must not raise

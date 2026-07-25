@@ -18,6 +18,7 @@ Repository: https://github.com/bwojtyca/grenton-objects-home-assistant
 from __future__ import annotations
 
 import html
+import io
 import re
 import xml.etree.ElementTree as ET
 import zipfile
@@ -46,13 +47,19 @@ _INPUT_ONLY_TYPES = {"DIN", "SatelInput", "Satel"}
 # ─── OM project parsing ─────────────────────────────────────────────────────
 
 def parse_omp(file_path: str) -> dict:
-    """Parse a ``.omp`` archive and return the Grenton project inventory.
+    """Parse a ``.omp`` archive on disk. See :func:`parse_omp_bytes`."""
+    with open(file_path, "rb") as handle:
+        return parse_omp_bytes(handle.read())
+
+
+def parse_omp_bytes(data: bytes) -> dict:
+    """Parse ``.omp`` archive bytes and return the Grenton project inventory.
 
     Returns ``{"objects": [...], "push_events": [...], "clus": [...]}``.
     Raises ``ValueError`` if the archive is not a valid OM project.
     """
     try:
-        with zipfile.ZipFile(file_path) as archive:
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
             member = next(
                 (n for n in archive.namelist() if n.rsplit("/", 1)[-1] == "system.xml"),
                 None,
@@ -283,6 +290,63 @@ def build_report(om_objects: list[dict], push_events: list[dict], ha_objects: li
         bucket = per_domain.setdefault(r["device_type"], {"polling": 0, "push": 0})
         bucket[r["mode"]] += 1
 
+    # Merged union of every OM object and every HA entry, keyed by normalized
+    # grenton_id. This is the single source for the "all objects" table.
+    ha_by_norm = {}
+    for r in rows:
+        ha_by_norm.setdefault(_normalize_grenton_id(r["grenton_id"]), r)
+
+    merged = []
+    seen_norm = set()
+    for obj in om_objects:
+        norm = _normalize_grenton_id(obj["grenton_id"])
+        seen_norm.add(norm)
+        r = ha_by_norm.get(norm)
+        is_input = obj["type"] in _INPUT_ONLY_TYPES
+        flags = []
+        if r is None and not is_input:
+            flags.append("not_in_ha")
+        if r is not None:
+            if r["mode"] == "push" and not r["has_push_event"]:
+                flags.append("push_no_event")
+            if r["mode"] == "polling" and r["has_push_event"]:
+                flags.append("poll_redundant")
+        merged.append({
+            "grenton_id": obj["grenton_id"],
+            "clu": obj.get("clu"),
+            "om_name": obj["name"],
+            "om_type": obj["type"],
+            "is_input": is_input,
+            "in_om": True,
+            "in_ha": r is not None,
+            "entity_id": r["entity_id"] if r else None,
+            "ha_name": r["name"] if r else None,
+            "device_type": r["device_type"] if r else None,
+            "mode": r["mode"] if r else None,
+            "interval": r["interval"] if r else None,
+            "area": r["area"] if r else None,
+            "flags": flags,
+        })
+
+    for r in rows:
+        if _normalize_grenton_id(r["grenton_id"]) not in seen_norm:
+            merged.append({
+                "grenton_id": r["grenton_id"],
+                "clu": None,
+                "om_name": None,
+                "om_type": None,
+                "is_input": False,
+                "in_om": False,
+                "in_ha": True,
+                "entity_id": r["entity_id"],
+                "ha_name": r["name"],
+                "device_type": r["device_type"],
+                "mode": r["mode"],
+                "interval": r["interval"],
+                "area": r["area"],
+                "flags": ["orphan"],
+            })
+
     verdict = "ok" if not (orphans or push_no_event or push_orphan_targets) else "issues"
 
     return {
@@ -306,114 +370,5 @@ def build_report(om_objects: list[dict], push_events: list[dict], ha_objects: li
         "not_in_ha_by_type": Counter(o["type"] for o in not_in_ha).most_common(),
         "input_not_in_ha_count": len(input_not_in_ha),
         "rows": rows,
+        "merged": merged,
     }
-
-
-# ─── Markdown rendering (pure) ──────────────────────────────────────────────
-
-_LIST_LIMIT = 15
-
-
-def _truncate(items: list, limit: int = _LIST_LIMIT) -> tuple[list, int]:
-    """Return ``(shown, hidden_count)`` for a capped list."""
-    if len(items) <= limit:
-        return items, 0
-    return items[:limit], len(items) - limit
-
-
-def render_markdown(report: dict) -> str:
-    """Render the reconciliation report as markdown for the config-flow dialog."""
-    summary = report["summary"]
-    lines: list[str] = []
-
-    if report["verdict"] == "ok":
-        lines.append("## ✅ Integracja spójna z projektem")
-        lines.append("Każda encja HA wskazuje na istniejący obiekt Grentona, a push jest spójny po obu stronach.")
-    else:
-        lines.append("## ⚠️ Wykryto rozbieżności")
-        lines.append("Szczegóły poniżej — sekcje 🔴/⚠️ wymagają uwagi.")
-    lines.append("")
-
-    lines.append(
-        f"**Encje HA:** {summary['ha_total']} · "
-        f"**Obiekty OM:** {summary['om_total']} · "
-        f"**Zdarzenia push w OM:** {summary['push_events']}"
-    )
-    lines.append("")
-    lines.append(f"**Tryb aktualizacji:** {summary['push']} push · {summary['polling']} polling")
-    lines.append("")
-
-    # Per-domain table.
-    lines.append("| Domena | Push | Polling |")
-    lines.append("|---|---:|---:|")
-    for domain, counts in sorted(summary["per_domain"].items(), key=lambda kv: -(kv[1]["push"] + kv[1]["polling"])):
-        lines.append(f"| {domain} | {counts['push']} | {counts['polling']} |")
-    lines.append("")
-
-    if len(summary["endpoints"]) > 1:
-        lines.append("**Endpointy bramki:**")
-        for endpoint, count in summary["endpoints"]:
-            lines.append(f"- `{endpoint}` — {count}")
-        lines.append("")
-
-    def section(title: str, rows: list[dict], render_row) -> None:
-        lines.append(f"### {title} ({len(rows)})")
-        if not rows:
-            lines.append("_brak_")
-            lines.append("")
-            return
-        shown, hidden = _truncate(rows)
-        for row in shown:
-            lines.append(f"- {render_row(row)}")
-        if hidden:
-            lines.append(f"- … (+{hidden} więcej)")
-        lines.append("")
-
-    section(
-        "🔴 Encje HA wskazujące na obiekt spoza projektu OM",
-        report["orphans"],
-        lambda r: f"`{r['entity_id']}` → `{r['grenton_id']}` ({r['device_type']})",
-    )
-    section(
-        "⚠️ Encje w trybie push bez zdarzenia push w OM",
-        report["push_no_event"],
-        lambda r: f"`{r['entity_id']}` → `{r['grenton_id']}` ({r['device_type']})",
-    )
-
-    lines.append(f"### ⚠️ Zdarzenia push OM celujące w nieistniejącą encję ({len(report['push_orphan_targets'])})")
-    if report["push_orphan_targets"]:
-        shown, hidden = _truncate(report["push_orphan_targets"])
-        for target in shown:
-            lines.append(f"- `{target}`")
-        if hidden:
-            lines.append(f"- … (+{hidden} więcej)")
-    else:
-        lines.append("_brak_")
-    lines.append("")
-
-    section(
-        "ℹ️ Polling z jednoczesnym zdarzeniem push (redundancja)",
-        report["poll_with_push"],
-        lambda r: f"`{r['entity_id']}` → `{r['grenton_id']}`",
-    )
-
-    # Objects present in Grenton but not exposed in HA.
-    lines.append(f"### 🟡 Obiekty Grentona nieobecne w HA ({len(report['not_in_ha'])})")
-    if report["not_in_ha_by_type"]:
-        lines.append("Wg typu: " + ", ".join(f"{count}× {obj_type}" for obj_type, count in report["not_in_ha_by_type"]))
-        shown, hidden = _truncate(sorted(report["not_in_ha"], key=lambda o: (o["type"] or "", o["name"] or "")))
-        for obj in shown:
-            lines.append(f"- `{obj['grenton_id']}` [{obj['type']}] {obj['name'] or ''}")
-        if hidden:
-            lines.append(f"- … (+{hidden} więcej)")
-    else:
-        lines.append("_brak_")
-    lines.append("")
-
-    if report["input_not_in_ha_count"]:
-        lines.append(
-            f"_Pominięto {report['input_not_in_ha_count']} wejść DIN/Satel "
-            "(przyciski/wejścia alarmu) — zwykle nie są encjami HA._"
-        )
-
-    return "\n".join(lines)
