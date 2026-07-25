@@ -95,7 +95,7 @@ function toBase64(buffer) {
 }
 
 async function ensureHaComponents() {
-  const want = ["ha-card", "ha-alert", "ha-data-table", "ha-expansion-panel", "ha-label", "state-badge", "ha-tooltip", "ha-textfield", "ha-icon", "ha-list", "ha-check-list-item"];
+  const want = ["ha-card", "ha-alert", "ha-data-table", "ha-expansion-panel", "ha-label", "ha-state-icon", "ha-tooltip", "ha-textfield", "ha-icon", "ha-list", "ha-check-list-item"];
   if (want.every((tag) => customElements.get(tag))) return;
   try {
     if (window.loadCardHelpers) {
@@ -582,17 +582,16 @@ class GrentonObjectsPanel extends HTMLElement {
     wrap.style.cssText = "display:inline-flex;align-items:center;gap:8px;cursor:pointer";
     wrap.title = "Otwórz okno encji";
     const stateObj = this._hass && this._hass.states ? this._hass.states[row.entity_id] : null;
-    // state-badge with color="state" applies stateColorCss → icon coloured by
-    // state (only for active states in coloured domains), same util the entity
-    // rows/cards use. (ha-entity-id-icon needs a Lit context provider we don't
-    // have, so it can't be used standalone.)
-    if (stateObj && customElements.get("state-badge")) {
-      const badge = document.createElement("state-badge");
-      badge.hass = this._hass;
-      badge.stateObj = stateObj;
-      badge.color = "state";
-      badge.style.cssText = "flex:0 0 auto";
-      wrap.appendChild(badge);
+    // ha-state-icon only PICKS the icon (it doesn't colour); state-badge did not
+    // apply colour reliably here. So we pick the icon with ha-state-icon and
+    // apply the state colour ourselves, replicating stateColorCss's CSS-var
+    // hierarchy — active states get the domain state colour, inactive stay grey.
+    if (stateObj && customElements.get("ha-state-icon")) {
+      const icon = document.createElement("ha-state-icon");
+      icon.stateObj = stateObj;
+      const color = this._stateColor(stateObj) || "var(--secondary-text-color)";
+      icon.style.cssText = `flex:0 0 auto;--mdc-icon-size:22px;color:${color}`;
+      wrap.appendChild(icon);
     }
     // Text is NOT colour-coded — only the state-badge icon carries state colour.
     const text = document.createElement("span");
@@ -614,6 +613,35 @@ class GrentonObjectsPanel extends HTMLElement {
     const unit = stateObj.attributes && stateObj.attributes.unit_of_measurement;
     if (unit) s = `${s} ${unit}`;
     return s;
+  }
+
+  // Reimplements HA's stateColorCss CSS-variable hierarchy (see
+  // common/entity/state_color.ts): active states in "coloured" domains get the
+  // domain state colour; inactive stay grey; non-coloured domains → null.
+  _stateColor(stateObj) {
+    const domain = stateObj.entity_id.split(".")[0];
+    const raw = String(stateObj.state || "").toLowerCase();
+    if (raw === "unavailable") return "var(--state-unavailable-color, var(--disabled-text-color))";
+    const COLORED = new Set([
+      "alarm_control_panel", "binary_sensor", "climate", "cover", "fan", "humidifier",
+      "input_boolean", "light", "lock", "media_player", "person", "siren", "switch",
+      "update", "vacuum", "valve", "water_heater", "automation", "script", "sun",
+      "device_tracker", "group",
+    ]);
+    if (!COLORED.has(domain)) return null;
+    const INACTIVE = new Set([
+      "off", "closed", "unavailable", "unknown", "standby", "idle", "disarmed", "not_home", "auto",
+    ]);
+    const active = !INACTIVE.has(raw);
+    const state = raw.replace(/[^a-z0-9_]/g, "");
+    const dc = stateObj.attributes && stateObj.attributes.device_class;
+    const vars = [];
+    if (dc) vars.push(`--state-${domain}-${dc}-${state}-color`);
+    vars.push(`--state-${domain}-${state}-color`);
+    vars.push(`--state-${domain}-${active ? "active" : "inactive"}-color`);
+    vars.push(`--state-${active ? "active" : "inactive"}-color`);
+    const literal = active ? "#f9a825" : "var(--secondary-text-color, #9e9e9e)";
+    return vars.reduceRight((acc, v) => `var(${v}, ${acc})`, literal);
   }
 
   _actionsNode(row) {
