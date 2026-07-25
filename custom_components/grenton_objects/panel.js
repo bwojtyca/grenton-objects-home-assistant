@@ -3,12 +3,14 @@
  *
  * A custom Home Assistant panel (opened via the /grenton_objects URL). Uploads
  * an Object Manager project (.omp), sends it to the `grenton_objects/analyze`
- * websocket command and renders a read-only reconciliation report:
- *   - a plain-text summary (problems + Grenton-side scaffolding highlighted), and
- *   - one native ha-data-table of every object (project ∪ HA), with dropdown
- *     multi-select filters (by type / update mode / status), a clickable entity
- *     column (opens the entity dialog, shows live state) and an actions column
- *     that opens the integration page.
+ * websocket command and renders a read-only reconciliation report, built from
+ * native HA components:
+ *   - a plain-text summary (problems + Grenton-side scaffolding highlighted),
+ *   - a native ha-data-table with its built-in search, a state-badge entity
+ *     column (opens the entity dialog), an ha-label status and an actions column
+ *     that deep-links to the config entry, and
+ *   - a right-hand filter pane (ha-expansion-panel groups) like the config
+ *     subpages (Devices / Entities / Automations).
  *
  * Repository: https://github.com/bwojtyca/grenton-objects-home-assistant
  */
@@ -70,7 +72,7 @@ function toBase64(buffer) {
 }
 
 async function ensureHaComponents() {
-  const want = ["ha-card", "ha-alert", "ha-data-table", "ha-selector", "ha-icon", "ha-state-icon"];
+  const want = ["ha-card", "ha-alert", "ha-data-table", "ha-expansion-panel", "ha-label", "state-badge", "ha-textfield", "ha-icon"];
   if (want.every((tag) => customElements.get(tag))) return;
   try {
     if (window.loadCardHelpers) {
@@ -92,7 +94,7 @@ class GrentonObjectsPanel extends HTMLElement {
     if (this._dataTable) this._dataTable.hass = hass;
     if (!this._built) this._build();
   }
-  set narrow(value) {}
+  set narrow(value) { this._narrow = value; }
   set route(value) {}
   set panel(value) {}
 
@@ -262,7 +264,7 @@ class GrentonObjectsPanel extends HTMLElement {
     return wrap;
   }
 
-  // ─── all-objects table ────────────────────────────────────────────────
+  // ─── all-objects table + filter pane ───────────────────────────────────
 
   _objectsCard(report) {
     this._allRows = report.merged.map((r, i) => {
@@ -287,9 +289,9 @@ class GrentonObjectsPanel extends HTMLElement {
     });
 
     this._search = "";
-    this._typeEnabled = new Set(
-      report.type_summary.filter((t) => t.supported && t.type !== "DIN").map((t) => t.type)
-    );
+    this._typeSummary = report.type_summary;
+    this._typeDefault = () => new Set(report.type_summary.filter((t) => t.supported && t.type !== "DIN").map((t) => t.type));
+    this._typeEnabled = this._typeDefault();
     this._updEnabled = new Set(UPDATE_CATS.map((c) => c.key));
     this._statEnabled = new Set(STATUS_CATS.map((c) => c.key));
 
@@ -298,17 +300,19 @@ class GrentonObjectsPanel extends HTMLElement {
     const box = document.createElement("div");
     box.style.padding = "8px 16px 16px";
 
-    const legend = document.createElement("div");
-    legend.style.cssText = "color:var(--secondary-text-color);font-size:0.9em;margin-bottom:8px";
-    legend.textContent =
-      "Kliknij encję, aby otworzyć jej okno; ikona w kolumnie Akcje otwiera stronę integracji. Domyślnie ukryte: DIN i typy nieobsługiwane (włącz w filtrze Typ).";
-    box.appendChild(legend);
+    // Toolbar: native search (wired to the data-table's built-in filter) + count.
+    const toolbar = document.createElement("div");
+    toolbar.style.cssText = "display:flex;gap:16px;align-items:center;margin-bottom:8px";
+    toolbar.append(this._searchField(), this._countLine());
+    box.appendChild(toolbar);
 
-    box.appendChild(this._filterBar(report.type_summary));
-
+    // Content row: table (left) + filter pane (right), like the config subpages.
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap";
     this._tableHost = document.createElement("div");
-    this._tableHost.style.marginTop = "8px";
-    box.appendChild(this._tableHost);
+    this._tableHost.style.cssText = "flex:1 1 520px;min-width:0";
+    row.append(this._tableHost, this._filterPane());
+    box.appendChild(row);
 
     card.appendChild(box);
     this._buildTable();
@@ -316,38 +320,73 @@ class GrentonObjectsPanel extends HTMLElement {
     return card;
   }
 
-  _filterBar(typeSummary) {
-    const bar = document.createElement("div");
-    bar.style.cssText = "display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:8px";
+  _searchField() {
+    const onInput = (value) => {
+      this._search = (value || "").trim().toLowerCase();
+      if (this._dataTable) this._dataTable.filter = this._search;
+      else this._applyFilter();
+    };
+    if (customElements.get("ha-textfield")) {
+      const tf = document.createElement("ha-textfield");
+      tf.label = "Szukaj";
+      tf.setAttribute("iconTrailing", "");
+      tf.style.cssText = "flex:1 1 260px";
+      tf.addEventListener("input", (e) => onInput(e.target.value));
+      return tf;
+    }
+    const input = document.createElement("input");
+    input.type = "search";
+    input.placeholder = "Szukaj…";
+    input.style.cssText =
+      "flex:1 1 260px;padding:8px 10px;border:1px solid var(--divider-color);border-radius:8px;" +
+      "background:var(--card-background-color);color:var(--primary-text-color)";
+    input.addEventListener("input", (e) => onInput(e.target.value));
+    return input;
+  }
 
-    const search = document.createElement("input");
-    search.type = "search";
-    search.placeholder = "Filtruj tekstowo…";
-    search.style.cssText =
-      "flex:1 1 220px;min-width:180px;padding:8px 10px;border:1px solid var(--divider-color);" +
-      "border-radius:8px;background:var(--card-background-color);color:var(--primary-text-color)";
-    search.addEventListener("input", () => { this._search = search.value.trim().toLowerCase(); this._applyFilter(); });
+  _countLine() {
+    this._count = document.createElement("span");
+    this._count.style.cssText = "color:var(--secondary-text-color);white-space:nowrap";
+    return this._count;
+  }
 
-    const typeOptions = typeSummary.map((t) => ({
-      value: t.type,
-      label: `${t.type} (${t.count})${t.supported ? "" : " · nieobsł."}`,
+  _filterPane() {
+    const pane = document.createElement("div");
+    pane.style.cssText = "flex:0 0 300px;max-width:100%;display:flex;flex-direction:column;gap:8px";
+
+    const head = document.createElement("div");
+    head.style.cssText = "display:flex;align-items:center;justify-content:space-between";
+    const title = document.createElement("span");
+    title.textContent = "Filtry";
+    title.style.fontWeight = "600";
+    const reset = document.createElement("button");
+    reset.textContent = "Wyczyść";
+    reset.style.cssText =
+      "cursor:pointer;border:1px solid var(--divider-color);border-radius:6px;padding:2px 8px;" +
+      "background:var(--secondary-background-color);color:var(--primary-text-color);font-size:0.85em";
+    reset.addEventListener("click", () => {
+      this._typeEnabled = this._typeDefault();
+      this._updEnabled = new Set(UPDATE_CATS.map((c) => c.key));
+      this._statEnabled = new Set(STATUS_CATS.map((c) => c.key));
+      const fresh = this._filterPane();
+      pane.replaceWith(fresh);
+      this._applyFilter();
+    });
+    head.append(title, reset);
+    pane.appendChild(head);
+
+    const typeItems = this._typeSummary.map((t) => ({
+      key: t.type, label: `${t.type} (${t.count})${t.supported ? "" : " · nieobsł."}`,
     }));
     const updCounts = this._countBy("updateCat");
     const statCounts = this._countBy("statusCat");
-    const updOptions = UPDATE_CATS.map((c) => ({ value: c.key, label: `${c.label} (${updCounts[c.key] || 0})` }));
-    const statOptions = STATUS_CATS.map((c) => ({ value: c.key, label: `${c.label} (${statCounts[c.key] || 0})` }));
 
-    bar.append(
-      search,
-      this._selectorFilter("Typ", typeOptions, this._typeEnabled, true),
-      this._selectorFilter("Aktualizacja", updOptions, this._updEnabled, false),
-      this._selectorFilter("Status", statOptions, this._statEnabled, false)
+    pane.append(
+      this._filterGroup("Typ", typeItems, this._typeEnabled, true),
+      this._filterGroup("Aktualizacja", UPDATE_CATS.map((c) => ({ key: c.key, label: `${c.label} (${updCounts[c.key] || 0})` })), this._updEnabled, false),
+      this._filterGroup("Status", STATUS_CATS.map((c) => ({ key: c.key, label: `${c.label} (${statCounts[c.key] || 0})` })), this._statEnabled, false)
     );
-
-    this._count = document.createElement("span");
-    this._count.style.cssText = "color:var(--secondary-text-color);margin-left:auto";
-    bar.appendChild(this._count);
-    return bar;
+    return pane;
   }
 
   _countBy(field) {
@@ -356,33 +395,16 @@ class GrentonObjectsPanel extends HTMLElement {
     return counts;
   }
 
-  // A multi-select filter using the native ha-selector (select, multiple,
-  // dropdown — selected options shown as chips in the form field). Falls back to
-  // an inline bordered checkbox group if ha-selector is unavailable.
-  _selectorFilter(label, options, enabledSet, withSelectAll) {
-    if (!customElements.get("ha-selector")) {
-      return this._inlineGroup(label, options, enabledSet, withSelectAll);
-    }
-    const container = document.createElement("div");
-    container.style.cssText = "display:flex;flex-direction:column;gap:4px;flex:1 1 260px;min-width:240px";
-
-    const sel = document.createElement("ha-selector");
-    sel.hass = this._hass;
-    sel.label = label;
-    sel.selector = { select: { multiple: true, mode: "dropdown", options } };
-    sel.value = options.filter((o) => enabledSet.has(o.value)).map((o) => o.value);
-    sel.addEventListener("value-changed", (e) => {
-      e.stopPropagation();
-      const value = e.detail && e.detail.value ? e.detail.value : [];
-      enabledSet.clear();
-      value.forEach((v) => enabledSet.add(v));
-      this._applyFilter();
-    });
-    container.appendChild(sel);
+  // One collapsible filter group (ha-expansion-panel with a checkbox list),
+  // like the ha-filter-* panels on the config subpages.
+  _filterGroup(labelText, items, enabledSet, withSelectAll) {
+    const content = document.createElement("div");
+    content.style.cssText = "padding:4px 8px 12px;display:flex;flex-direction:column;gap:6px;max-height:320px;overflow:auto";
+    const cbs = [];
 
     if (withSelectAll) {
       const btnRow = document.createElement("div");
-      btnRow.style.cssText = "display:flex;gap:8px";
+      btnRow.style.cssText = "display:flex;gap:8px;margin-bottom:2px";
       const mk = (text, on) => {
         const b = document.createElement("button");
         b.textContent = text;
@@ -391,60 +413,76 @@ class GrentonObjectsPanel extends HTMLElement {
           "background:var(--secondary-background-color);color:var(--primary-text-color);font-size:0.85em";
         b.addEventListener("click", () => {
           enabledSet.clear();
-          if (on) options.forEach((o) => enabledSet.add(o.value));
-          sel.value = Array.from(enabledSet);
+          if (on) items.forEach((it) => enabledSet.add(it.key));
+          cbs.forEach((cb, i) => { cb.checked = enabledSet.has(items[i].key); });
           this._applyFilter();
         });
         return b;
       };
       btnRow.append(mk("wszystkie", true), mk("żadne", false));
-      container.appendChild(btnRow);
+      content.appendChild(btnRow);
     }
-    return container;
-  }
 
-  _inlineGroup(label, options, enabledSet, withSelectAll) {
-    const wrap = document.createElement("div");
-    wrap.style.cssText = "border:1px solid var(--divider-color);border-radius:8px;padding:6px 12px;min-width:220px";
-    const head = document.createElement("div");
-    head.style.cssText = "font-weight:600;margin-bottom:4px";
-    head.textContent = label;
-    wrap.appendChild(head);
-    options.forEach((o) => {
-      const lbl = document.createElement("label");
-      lbl.style.cssText = "display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap";
+    items.forEach((it) => {
+      const label = document.createElement("label");
+      label.style.cssText = "display:flex;align-items:center;gap:8px;cursor:pointer;white-space:nowrap";
       const cb = document.createElement("input");
       cb.type = "checkbox";
-      cb.checked = enabledSet.has(o.value);
+      cb.checked = enabledSet.has(it.key);
       cb.addEventListener("change", () => {
-        if (cb.checked) enabledSet.add(o.value); else enabledSet.delete(o.value);
+        if (cb.checked) enabledSet.add(it.key); else enabledSet.delete(it.key);
         this._applyFilter();
       });
-      lbl.append(cb, document.createTextNode(o.label));
-      wrap.appendChild(lbl);
+      cbs.push(cb);
+      label.append(cb, document.createTextNode(it.label));
+      content.appendChild(label);
     });
+
+    const selectedCount = items.filter((it) => enabledSet.has(it.key)).length;
+    if (customElements.get("ha-expansion-panel")) {
+      const panel = document.createElement("ha-expansion-panel");
+      panel.setAttribute("outlined", "");
+      if (enabledSet.size !== items.length) panel.setAttribute("expanded", "");
+      const header = document.createElement("span");
+      header.setAttribute("slot", "header");
+      header.textContent = `${labelText} (${selectedCount}/${items.length})`;
+      panel.append(header, content);
+      return panel;
+    }
+    const wrap = document.createElement("div");
+    wrap.style.cssText = "border:1px solid var(--divider-color);border-radius:8px;padding:8px 12px";
+    const h = document.createElement("div");
+    h.style.cssText = "font-weight:600;margin-bottom:4px";
+    h.textContent = labelText;
+    wrap.append(h, content);
     return wrap;
   }
 
   _columns() {
     return {
       name: { title: "Nazwa (Grenton)", sortable: true, filterable: true, grows: true },
-      grenton_id: { title: "Grenton ID", sortable: true, filterable: true, width: "170px" },
-      type: { title: "Typ", sortable: true, filterable: true, width: "140px" },
-      entity_id: { title: "Encja HA", sortable: true, filterable: true, width: "260px", template: (a, b) => this._entityNode((a && typeof a === "object") ? a : b) },
-      update: { title: "Aktualizacja", sortable: true, filterable: true, width: "150px" },
+      grenton_id: { title: "Grenton ID", sortable: true, filterable: true, width: "160px" },
+      type: { title: "Typ", sortable: true, filterable: true, width: "130px" },
+      entity_id: { title: "Encja HA", sortable: true, filterable: true, width: "280px", template: (a, b) => this._entityNode((a && typeof a === "object") ? a : b) },
+      update: { title: "Aktualizacja", sortable: true, filterable: true, width: "140px" },
       status: { title: "Status", sortable: true, filterable: true, width: "220px", template: (a, b) => this._statusNode((a && typeof a === "object") ? a : b) },
-      actions: { title: "Akcje", sortable: false, filterable: false, width: "80px", template: (a, b) => this._actionsNode((a && typeof a === "object") ? a : b) },
+      actions: { title: "Akcje", sortable: false, filterable: false, width: "70px", template: (a, b) => this._actionsNode((a && typeof a === "object") ? a : b) },
     };
   }
 
   _statusNode(row) {
+    const color = SEV_COLOR[row ? row.sev : "muted"];
+    if (customElements.get("ha-label")) {
+      const label = document.createElement("ha-label");
+      label.style.setProperty("--color", color);
+      label.textContent = row ? row.status : "";
+      return label;
+    }
     const span = document.createElement("span");
     span.textContent = row ? row.status : "";
-    const sev = row ? row.sev : "muted";
     span.style.cssText =
       `display:inline-block;padding:2px 10px;border-radius:12px;white-space:nowrap;` +
-      `font-size:0.85em;color:${SEV_COLOR[sev]};border:1px solid ${SEV_COLOR[sev]}`;
+      `font-size:0.85em;color:${color};border:1px solid ${color}`;
     return span;
   }
 
@@ -456,18 +494,21 @@ class GrentonObjectsPanel extends HTMLElement {
       return dash;
     }
     const wrap = document.createElement("span");
-    wrap.style.cssText = "display:inline-flex;align-items:center;gap:8px;cursor:pointer;color:var(--primary-color)";
+    wrap.style.cssText = "display:inline-flex;align-items:center;gap:8px;cursor:pointer";
     wrap.title = "Otwórz okno encji";
-    const state = this._hass && this._hass.states ? this._hass.states[row.entity_id] : null;
-    if (state && customElements.get("ha-state-icon")) {
-      const icon = document.createElement("ha-state-icon");
-      icon.hass = this._hass;
-      icon.stateObj = state;
-      icon.style.cssText = "--mdc-icon-size:20px;flex:0 0 auto;color:var(--secondary-text-color)";
-      wrap.appendChild(icon);
+    const stateObj = this._hass && this._hass.states ? this._hass.states[row.entity_id] : null;
+    if (stateObj && customElements.get("state-badge")) {
+      const badge = document.createElement("state-badge");
+      badge.hass = this._hass;
+      badge.stateObj = stateObj;
+      badge.style.cssText = "flex:0 0 auto";
+      wrap.appendChild(badge);
     }
     const text = document.createElement("span");
-    text.textContent = row.entity_id + (state ? `  ·  ${state.state}` : "");
+    const stateStr = stateObj ? this._formatState(stateObj) : "niedostępna";
+    text.innerHTML =
+      `<span style="color:var(--primary-color)">${row.entity_id}</span>` +
+      `<span style="color:var(--secondary-text-color)"> · ${stateStr}</span>`;
     wrap.appendChild(text);
     wrap.addEventListener("click", () => {
       this.dispatchEvent(new CustomEvent("hass-more-info", {
@@ -477,11 +518,18 @@ class GrentonObjectsPanel extends HTMLElement {
     return wrap;
   }
 
+  _formatState(stateObj) {
+    let s = stateObj.state;
+    const unit = stateObj.attributes && stateObj.attributes.unit_of_measurement;
+    if (unit) s = `${s} ${unit}`;
+    return s;
+  }
+
   _actionsNode(row) {
     const span = document.createElement("span");
     if (!row || !row.entry_id) return span;
     span.style.cssText = "cursor:pointer;color:var(--secondary-text-color)";
-    span.title = "Otwórz stronę integracji (konfiguracja obiektu)";
+    span.title = "Otwórz konfigurację obiektu w integracji";
     if (customElements.get("ha-icon")) {
       const icon = document.createElement("ha-icon");
       icon.setAttribute("icon", "mdi:cog");
@@ -495,7 +543,6 @@ class GrentonObjectsPanel extends HTMLElement {
   }
 
   _openIntegration(entryId) {
-    // HA focuses/expands a specific config entry via the `#config_entry=<id>` hash.
     let path = `/config/integrations/integration/${DOMAIN}`;
     if (entryId) path += `#config_entry=${entryId}`;
     window.history.pushState(null, "", path);
@@ -541,7 +588,8 @@ class GrentonObjectsPanel extends HTMLElement {
       if (!this._typeEnabled.has(r.type)) return false;
       if (!this._updEnabled.has(r.updateCat)) return false;
       if (!this._statEnabled.has(r.statusCat)) return false;
-      if (this._search) {
+      // Text search: handled by ha-data-table.filter; only apply here for the fallback table.
+      if (!this._dataTable && this._search) {
         const hay = `${r.name} ${r.grenton_id} ${r.type} ${r.entity_id} ${r.status}`.toLowerCase();
         if (!hay.includes(this._search)) return false;
       }
@@ -558,31 +606,30 @@ class GrentonObjectsPanel extends HTMLElement {
       this._fallbackBody.replaceChildren();
       rows.forEach((r) => {
         const tr = document.createElement("tr");
-        const mkCell = (node) => {
+        const cell = (node) => {
           const td = document.createElement("td");
           td.style.cssText = "padding:6px 8px;border-bottom:1px solid var(--divider-color);vertical-align:top";
           td.appendChild(node);
           return td;
         };
-        const textNode = (val, mono) => {
+        const txt = (val, mono) => {
           const s = document.createElement("span");
           s.textContent = val == null ? "" : String(val);
           if (mono) s.style.fontFamily = "var(--code-font-family, monospace)";
           return s;
         };
         tr.append(
-          mkCell(textNode(r.name)),
-          mkCell(textNode(r.grenton_id, true)),
-          mkCell(textNode(r.type)),
-          mkCell(this._entityNode(r)),
-          mkCell(textNode(r.update)),
-          mkCell(this._statusNode(r)),
-          mkCell(this._actionsNode(r))
+          cell(txt(r.name)), cell(txt(r.grenton_id, true)), cell(txt(r.type)),
+          cell(this._entityNode(r)), cell(txt(r.update)), cell(this._statusNode(r)), cell(this._actionsNode(r))
         );
         this._fallbackBody.appendChild(tr);
       });
     }
-    if (this._count) this._count.textContent = `Pokazano ${rows.length} z ${this._allRows.length}`;
+    if (this._count) {
+      // rows = after the type/update/status filters; ha-data-table then applies
+      // the text search on top, so this is the pre-search filtered count.
+      this._count.textContent = `Po filtrach: ${rows.length} z ${this._allRows.length}`;
+    }
   }
 }
 
