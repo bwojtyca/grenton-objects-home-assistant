@@ -3,9 +3,9 @@
  *
  * Upload an Object Manager project (.omp); the backend `grenton_objects/analyze`
  * websocket command reconciles it against the live HA configuration and returns
- * a report. Rendered with Lit + native HA components (ha-data-table, ha-list,
- * ha-label, ha-tooltip, ha-state-icon, ha-expansion-panel…). `hass` is reactive,
- * so entity icons/states update live.
+ * a report. Rendered with Lit on top of HA's native hass-tabs-subpage-data-table
+ * (search, grouping, sorting, column config, a filter pane) — the same layout as
+ * Settings → Entities — minus row selection.
  *
  * Repository: https://github.com/bwojtyca/grenton-objects-home-assistant
  */
@@ -72,9 +72,11 @@ interface ViewRow {
   id: string;
   name: string;
   grenton_id: string;
+  clu: string;
   type: string;
   entity_id: string;
   entry_id: string;
+  domain: string;
   update: string;
   updateCat: string;
   status: string;
@@ -97,7 +99,7 @@ function toBase64(buffer: ArrayBuffer): string {
 export class GrentonObjectsPanel extends LitElement {
   @property({ attribute: false }) public hass!: HomeAssistant;
   @property({ attribute: false }) public narrow = false;
-  @property({ attribute: false }) public route?: unknown;
+  @property({ attribute: false }) public route?: any;
   @property({ attribute: false }) public panel?: unknown;
 
   @state() private _report?: Report;
@@ -112,24 +114,17 @@ export class GrentonObjectsPanel extends LitElement {
   private _entityIds = new Set<string>();
 
   static styles = css`
-    :host { display: block; padding: 16px; box-sizing: border-box; }
-    ha-card { display: block; margin-bottom: 16px; }
+    :host { display: block; height: 100%; }
+    .pad { padding: 16px; box-sizing: border-box; }
+    ha-card { display: block; max-width: 720px; margin: 24px auto; }
     .card-content { padding: 16px; }
     p.intro { margin-top: 0; color: var(--secondary-text-color); }
-    .summary { line-height: 1.7; }
+    .banner { padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; }
+    .summary { line-height: 1.6; }
     .muted { color: var(--secondary-text-color); }
-    .problems div { font-weight: 400; }
     .problems div.active-error { font-weight: 600; }
-    .scaffold { margin-top: 16px; }
+    .scaffold { margin-top: 8px; }
     .scaffold .title { font-weight: 600; margin-bottom: 4px; }
-    .legend { color: var(--secondary-text-color); font-size: 0.9em; margin-bottom: 8px; }
-    .toolbar { display: flex; gap: 16px; align-items: center; margin-bottom: 8px; }
-    .toolbar ha-textfield { flex: 1 1 260px; }
-    .content { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
-    .table-host { flex: 1 1 520px; min-width: 0; }
-    .filters { flex: 0 0 300px; max-width: 100%; display: flex; flex-direction: column; gap: 8px; }
-    .filters-head { display: flex; align-items: center; justify-content: space-between; font-weight: 600; }
-    ha-expansion-panel { --expansion-panel-content-padding: 0; }
     .filter-header { display: flex; align-items: center; gap: 8px; width: 100%; }
     .badge {
       background: var(--primary-color); color: var(--text-primary-color, #fff);
@@ -141,15 +136,24 @@ export class GrentonObjectsPanel extends LitElement {
     .entity ha-state-icon { flex: 0 0 auto; --mdc-icon-size: 22px; }
     .cog { cursor: pointer; color: var(--secondary-text-color); }
     ha-label { cursor: help; }
-    .reset-btn, .selall-btn {
-      cursor: pointer; border: 1px solid var(--divider-color); border-radius: 6px; padding: 2px 8px;
-      background: var(--secondary-background-color); color: var(--primary-text-color); font-size: 0.85em;
-    }
+    ha-tooltip { --ha-tooltip-max-width: 320px; }
   `;
 
+  // Re-render on hass change only when one of our entities actually changed.
+  protected shouldUpdate(changed: PropertyValues): boolean {
+    if (changed.size === 1 && changed.has("hass")) {
+      const prev = changed.get("hass") as HomeAssistant | undefined;
+      if (prev && this._entityIds.size) {
+        for (const id of this._entityIds) {
+          if (prev.states[id] !== this.hass.states[id]) return true;
+        }
+      }
+      return false;
+    }
+    return true;
+  }
+
   protected firstUpdated(): void {
-    // Nudge HA to load its lazy element bundle so ha-data-table / ha-list /
-    // ha-label / ha-tooltip etc. are defined when we render them.
     const w = window as any;
     if (!customElements.get("ha-data-table") && w.loadCardHelpers) {
       w.loadCardHelpers()
@@ -158,29 +162,69 @@ export class GrentonObjectsPanel extends LitElement {
     }
   }
 
-  // Re-render on hass change only when one of our entities actually changed,
-  // so unrelated system state changes don't churn the table.
-  protected shouldUpdate(changed: PropertyValues): boolean {
-    if (changed.size === 1 && changed.has("hass")) {
-      const prev = changed.get("hass") as HomeAssistant | undefined;
-      if (prev && this._entityIds.size) {
-        for (const id of this._entityIds) {
-          if (prev.states[id] !== this.hass.states[id]) return true;
-        }
-        return false;
-      }
-      return false;
+  render() {
+    if (!this._report) {
+      return html`<div class="pad">${this._uploadCard()}${this._error ? this._errorAlert() : nothing}</div>`;
     }
-    return true;
+    if (customElements.get("hass-tabs-subpage-data-table")) {
+      return this._subpage();
+    }
+    // Fallback if the native layout chunk isn't loaded: plain table, no menus.
+    return html`
+      <div class="pad">
+        ${this._verdictAlert()}
+        <ha-card><div class="banner">${this._summaryInner()}</div></ha-card>
+        <ha-card header="Wszystkie obiekty">
+          <div class="card-content">
+            <ha-data-table
+              .hass=${this.hass}
+              .columns=${this._columns()}
+              .data=${this._viewRows}
+              .filter=${this._search}
+              .autoHeight=${true}
+            ></ha-data-table>
+          </div>
+        </ha-card>
+      </div>
+    `;
   }
 
-  render() {
+  private _subpage() {
     return html`
-      ${this._uploadCard()}
-      ${this._error ? this._errorAlert() : nothing}
-      ${this._report ? this._verdictAlert() : nothing}
-      ${this._report ? this._summaryCard() : nothing}
-      ${this._report ? this._objectsCard() : nothing}
+      <hass-tabs-subpage-data-table
+        .hass=${this.hass}
+        .localizeFunc=${this.hass.localize}
+        .narrow=${this.narrow}
+        ?main-page=${true}
+        .route=${this.route ?? { prefix: "", path: "" }}
+        .tabs=${[]}
+        .columns=${this._columns()}
+        .data=${this._viewRows}
+        .initialGroupColumn=${"clu"}
+        .filter=${this._search}
+        @search-changed=${(e: any) => (this._search = e.detail.value)}
+        .searchLabel=${"Szukaj obiektów"}
+        ?has-filters=${true}
+        .filters=${this._activeFilterCount()}
+        @clear-filter=${this._resetFilters}
+        .noDataText=${"Brak obiektów dla wybranych filtrów"}
+      >
+        <ha-icon-button
+          slot="toolbar-icon"
+          .label=${"Wgraj inny plik .omp"}
+          @click=${this._pickFile}
+        >
+          <ha-icon icon="mdi:upload"></ha-icon>
+        </ha-icon-button>
+
+        <div slot="top-header" class="banner">
+          ${this._verdictAlert()}
+          ${this._summaryInner()}
+          <input type="file" accept=".omp,.zip" style="display:none" @change=${this._onFile} />
+        </div>
+
+        ${this._filterGroups()}
+      </hass-tabs-subpage-data-table>
     `;
   }
 
@@ -214,7 +258,7 @@ export class GrentonObjectsPanel extends LitElement {
     ></ha-alert>`;
   }
 
-  private _summaryCard() {
+  private _summaryInner() {
     const r = this._report!;
     const s = r.summary;
     const domains = Object.keys(s.per_domain)
@@ -233,27 +277,25 @@ export class GrentonObjectsPanel extends LitElement {
     ];
     const hasProblem = problems.some((p) => p.count > 0 && (p.sev === "error" || p.sev === "warn"));
     return html`
-      <ha-card header="Podsumowanie">
-        <div class="card-content summary">
-          <div>
-            Obiekty projektu: <b>${s.om_total}</b> · Encje w HA: <b>${s.ha_total}</b> ·
-            Zdarzenia push (Grenton→HA): <b>${s.push_events}</b><br />
-            Tryb aktualizacji: <b>${s.push}</b> push · <b>${s.polling}</b> polling<br />
-            <span class="muted">Wg domeny: ${domains}</span>
-          </div>
-          <div class="problems" style="margin-top:12px">
-            ${!hasProblem && r.not_in_ha.length === 0
-              ? html`<div style=${`color:${SEV_HEX.ok}`}>Brak problemów — wszystko spójne.</div>`
-              : problems.map((p) => {
-                  const active = p.count > 0;
-                  const color = active ? SEV_HEX[p.sev] : SEV_HEX.muted;
-                  const cls = active && (p.sev === "error" || p.sev === "warn") ? "active-error" : "";
-                  return html`<div class=${cls} style=${`color:${color}`}>${p.count} ${p.label}</div>`;
-                })}
-          </div>
-          ${r.scaffolding ? this._scaffold(r.scaffolding) : nothing}
+      <div class="summary">
+        <div>
+          Obiekty projektu: <b>${s.om_total}</b> · Encje w HA: <b>${s.ha_total}</b> ·
+          Zdarzenia push (Grenton→HA): <b>${s.push_events}</b> ·
+          Tryb: <b>${s.push}</b> push / <b>${s.polling}</b> polling<br />
+          <span class="muted">Wg domeny: ${domains}</span>
         </div>
-      </ha-card>
+        <div class="problems" style="margin-top:8px">
+          ${!hasProblem && r.not_in_ha.length === 0
+            ? html`<div style=${`color:${SEV_HEX.ok}`}>Brak problemów — wszystko spójne.</div>`
+            : problems.map((p) => {
+                const active = p.count > 0;
+                const color = active ? SEV_HEX[p.sev] : SEV_HEX.muted;
+                const cls = active && (p.sev === "error" || p.sev === "warn") ? "active-error" : "";
+                return html`<div class=${cls} style=${`color:${color}`}>${p.count} ${p.label}</div>`;
+              })}
+        </div>
+        ${r.scaffolding ? this._scaffold(r.scaffolding) : nothing}
+      </div>
     `;
   }
 
@@ -277,7 +319,7 @@ export class GrentonObjectsPanel extends LitElement {
     `;
   }
 
-  // ─── objects table + filters ───────────────────────────────────────────
+  // ─── table data + columns ──────────────────────────────────────────────
 
   private get _viewRows(): ViewRow[] {
     const merged = this._report?.merged ?? [];
@@ -285,13 +327,16 @@ export class GrentonObjectsPanel extends LitElement {
       const st = statusInfo(r);
       const updateCat = r.in_ha ? (r.mode ?? "brak") : "brak";
       const update = !r.in_ha ? "brak" : r.mode === "polling" ? `polling (${r.interval ?? "?"} s)` : "push";
+      const clu = r.clu || (r.grenton_id?.includes("->") ? r.grenton_id.split("->")[0] : "") || "—";
       return {
         id: r.grenton_id || r.entity_id || String(i),
         name: r.om_name || r.ha_name || "",
         grenton_id: r.grenton_id || "",
-        type: r.om_type || r.device_type || "",
+        clu,
+        type: r.om_type || r.device_type || "—",
         entity_id: r.entity_id || "",
         entry_id: r.entry_id || "",
+        domain: r.entity_id ? r.entity_id.split(".")[0] : "—",
         update,
         updateCat,
         status: st.label,
@@ -300,7 +345,6 @@ export class GrentonObjectsPanel extends LitElement {
         hint: st.hint,
       };
     });
-    // Filter (empty set = no constraint, like HA's ha-filter-*).
     return rows.filter((r) => {
       if (this._typeSel.size && !this._typeSel.has(r.type)) return false;
       if (this._updSel.size && !this._updSel.has(r.updateCat)) return false;
@@ -312,19 +356,21 @@ export class GrentonObjectsPanel extends LitElement {
   private _columns() {
     return {
       name: { title: "Nazwa (Grenton)", main: true, sortable: true, filterable: true, flex: 2 },
-      grenton_id: { title: "Grenton ID", sortable: true, filterable: true, width: "160px" },
-      type: { title: "Typ", sortable: true, filterable: true, width: "130px" },
-      entity_id: { title: "Encja HA", sortable: true, filterable: true, width: "280px",
+      grenton_id: { title: "Grenton ID", sortable: true, filterable: true, hideable: true, width: "160px" },
+      clu: { title: "CLU", sortable: true, filterable: true, groupable: true, hideable: true, defaultHidden: true },
+      type: { title: "Typ Grenton", sortable: true, filterable: true, groupable: true, hideable: true, width: "140px" },
+      entity_id: { title: "Encja HA", sortable: true, filterable: true, hideable: true, width: "260px",
         template: (a: any, b: any) => this._entityCell(b ?? a) },
-      update: { title: "Aktualizacja", sortable: true, filterable: true, width: "150px" },
-      status: { title: "Status", sortable: true, filterable: true, width: "220px",
+      domain: { title: "Domena HA", filterable: true, groupable: true, hideable: true, defaultHidden: true },
+      update: { title: "Aktualizacja", sortable: true, filterable: true, hideable: true, width: "150px" },
+      updateCat: { title: "Tryb aktualizacji", filterable: true, groupable: true, hideable: true, defaultHidden: true },
+      status: { title: "Status", sortable: true, filterable: true, groupable: true, hideable: true, width: "220px",
         template: (a: any, b: any) => this._statusCell(b ?? a) },
-      actions: { title: "Akcje", sortable: false, filterable: false, width: "70px",
-        template: (a: any, b: any) => this._actionsCell(b ?? a) },
+      actions: { title: "Akcje", width: "64px", template: (a: any, b: any) => this._actionsCell(b ?? a) },
     };
   }
 
-  private _entityCell(row: ViewRow): TemplateResult | typeof nothing {
+  private _entityCell(row: ViewRow): TemplateResult {
     if (!row.entity_id) return html`<span class="muted">—</span>`;
     const st = this.hass?.states?.[row.entity_id];
     const color = st ? stateColorCss(st as any) ?? "var(--secondary-text-color)" : "var(--secondary-text-color)";
@@ -357,74 +403,38 @@ export class GrentonObjectsPanel extends LitElement {
     return unit ? `${st.state} ${unit}` : st.state;
   }
 
-  private _objectsCard() {
-    const total = this._report!.merged.length;
-    const shown = this._viewRows.length;
-    return html`
-      <ha-card header=${`Wszystkie obiekty (${total})`}>
-        <div class="card-content">
-          <div class="legend">
-            Kliknij encję, aby otworzyć jej okno; ikona w kolumnie Akcje otwiera konfigurację obiektu.
-            Wyszukiwarka i filtry po prawej; kolor ikony encji zależy od stanu.
-          </div>
-          <div class="toolbar">
-            <ha-textfield
-              label="Szukaj"
-              .value=${this._search}
-              @input=${(e: any) => (this._search = e.target.value)}
-            ></ha-textfield>
-            <span class="muted">Po filtrach: ${shown} z ${total}</span>
-          </div>
-          <div class="content">
-            <div class="table-host">
-              <ha-data-table
-                .hass=${this.hass}
-                .columns=${this._columns()}
-                .data=${this._viewRows}
-                .filter=${this._search}
-                .autoHeight=${true}
-                .clickable=${false}
-              ></ha-data-table>
-            </div>
-            ${this._filtersPane()}
-          </div>
-        </div>
-      </ha-card>
-    `;
+  // ─── filter pane ───────────────────────────────────────────────────────
+
+  private _activeFilterCount(): number {
+    return this._typeSel.size + this._updSel.size + this._statSel.size;
   }
 
-  private _filtersPane() {
+  private _filterGroups() {
     const r = this._report!;
     const counts = (field: keyof ViewRow) => {
       const c: Record<string, number> = {};
-      for (const row of this._viewRowsAll()) c[row[field] as string] = (c[row[field] as string] || 0) + 1;
+      for (const row of this._allViewRows()) c[row[field] as string] = (c[row[field] as string] || 0) + 1;
       return c;
     };
     const typeItems = r.type_summary.map((t) => ({ key: t.type, label: `${t.type} (${t.count})${t.supported ? "" : " · nieobsł."}` }));
     const uc = counts("updateCat");
     const sc = counts("statusCat");
     return html`
-      <div class="filters">
-        <div class="filters-head">
-          <span>Filtry</span>
-          <button class="reset-btn" @click=${this._resetFilters}>Wyczyść</button>
-        </div>
-        ${this._filterGroup("Typ", typeItems, this._typeSel, "type")}
-        ${this._filterGroup("Aktualizacja", UPDATE_CATS.map((c) => ({ key: c.key, label: `${c.label} (${uc[c.key] || 0})` })), this._updSel, "upd")}
-        ${this._filterGroup("Status", STATUS_CATS.map((c) => ({ key: c.key, label: `${c.label} (${sc[c.key] || 0})` })), this._statSel, "stat")}
-      </div>
+      ${this._filterGroup("Typ Grenton", typeItems, this._typeSel, "type")}
+      ${this._filterGroup("Aktualizacja", UPDATE_CATS.map((c) => ({ key: c.key, label: `${c.label} (${uc[c.key] || 0})` })), this._updSel, "upd")}
+      ${this._filterGroup("Status", STATUS_CATS.map((c) => ({ key: c.key, label: `${c.label} (${sc[c.key] || 0})` })), this._statSel, "stat")}
     `;
   }
 
-  // Rows before type/upd/status filtering (for the per-value counts).
-  private _viewRowsAll(): ViewRow[] {
+  // All rows (pre-filter) for filter-pane counts.
+  private _allViewRows(): ViewRow[] {
     const merged = this._report?.merged ?? [];
-    return merged.map((r, i): ViewRow => {
+    return merged.map((r): ViewRow => {
       const st = statusInfo(r);
-      const updateCat = r.in_ha ? (r.mode ?? "brak") : "brak";
       return {
-        id: "", name: "", grenton_id: "", type: r.om_type || r.device_type || "",
-        entity_id: "", entry_id: "", update: "", updateCat,
+        id: "", name: "", grenton_id: "", clu: "", type: r.om_type || r.device_type || "—",
+        entity_id: "", entry_id: "", domain: "", update: "",
+        updateCat: r.in_ha ? (r.mode ?? "brak") : "brak",
         status: st.label, sev: st.sev, statusCat: st.cat,
       };
     });
@@ -437,7 +447,7 @@ export class GrentonObjectsPanel extends LitElement {
     which: "type" | "upd" | "stat"
   ) {
     return html`
-      <ha-expansion-panel outlined .expanded=${sel.size > 0}>
+      <ha-expansion-panel slot="filter-pane" outlined .expanded=${sel.size > 0}>
         <div slot="header" class="filter-header">
           <span>${label}</span>
           ${sel.size
