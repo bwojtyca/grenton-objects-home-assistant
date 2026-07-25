@@ -387,9 +387,21 @@ GATE_HTTP->HA_Integration_Process_Queue_Timer->Start()
 | Climate                            |  set_therm_current_temp | temp (current temp)                              | -->
 
 
+## 🛠️ Development — analysis panel
+
+The `/grenton_objects` analysis page is a Lit + TypeScript panel built with Vite; its source lives in [`frontend/`](frontend/). The build output (`custom_components/grenton_objects/panel.js`) is committed so HACS users don't need a toolchain. To rebuild after changing the panel:
+
+```bash
+cd frontend
+npm ci
+npm run build   # writes ../custom_components/grenton_objects/panel.js
+```
+
+The backend (report generation) is the Python websocket command `grenton_objects/analyze` in `custom_components/grenton_objects/report.py` + `panel.py`.
+
 ## 📄 License
 
-This project is licensed for **Personal, Non-Commercial Use Only**. You are free to use, copy, and modify this software for your own personal home automation setup.
+This project is licensed for **Personal, Non-Commercial Use Only**. You are free to use, copy, and modify this software for your own personal home automation setup. You are free to use, copy, and modify this software for your own personal home automation setup.
 
 ❌ **Commercial use is prohibited** without prior written permission.
 
