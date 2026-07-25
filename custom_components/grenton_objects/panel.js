@@ -70,7 +70,7 @@ function toBase64(buffer) {
 }
 
 async function ensureHaComponents() {
-  const want = ["ha-card", "ha-alert", "ha-data-table", "ha-selector", "ha-icon"];
+  const want = ["ha-card", "ha-alert", "ha-data-table", "ha-selector", "ha-icon", "ha-state-icon"];
   if (want.every((tag) => customElements.get(tag))) return;
   try {
     if (window.loadCardHelpers) {
@@ -456,10 +456,19 @@ class GrentonObjectsPanel extends HTMLElement {
       return dash;
     }
     const wrap = document.createElement("span");
-    wrap.style.cssText = "cursor:pointer;color:var(--primary-color)";
+    wrap.style.cssText = "display:inline-flex;align-items:center;gap:8px;cursor:pointer;color:var(--primary-color)";
     wrap.title = "Otwórz okno encji";
     const state = this._hass && this._hass.states ? this._hass.states[row.entity_id] : null;
-    wrap.textContent = row.entity_id + (state ? `  ·  ${state.state}` : "");
+    if (state && customElements.get("ha-state-icon")) {
+      const icon = document.createElement("ha-state-icon");
+      icon.hass = this._hass;
+      icon.stateObj = state;
+      icon.style.cssText = "--mdc-icon-size:20px;flex:0 0 auto;color:var(--secondary-text-color)";
+      wrap.appendChild(icon);
+    }
+    const text = document.createElement("span");
+    text.textContent = row.entity_id + (state ? `  ·  ${state.state}` : "");
+    wrap.appendChild(text);
     wrap.addEventListener("click", () => {
       this.dispatchEvent(new CustomEvent("hass-more-info", {
         detail: { entityId: row.entity_id }, bubbles: true, composed: true,
