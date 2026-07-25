@@ -4,6 +4,7 @@
 export interface MergedRow {
   grenton_id: string | null;
   clu: string | null;
+  module: string | null;
   om_name: string | null;
   om_type: string | null;
   is_din: boolean;

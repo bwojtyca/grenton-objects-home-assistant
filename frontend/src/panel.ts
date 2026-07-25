@@ -76,6 +76,7 @@ interface ViewRow {
   name: string;
   grenton_id: string;
   clu: string;
+  module: string;
   type: string;
   entity_id: string;
   entry_id: string;
@@ -169,6 +170,7 @@ export class GrentonObjectsPanel extends LitElement {
     .issue { line-height: 1.5; max-width: 460px; }
     .issue-sec { margin-bottom: 12px; }
     .issue-h { font-weight: 600; margin-bottom: 2px; }
+    .issue-action { margin-top: 6px; }
     .dialog-footer { display: flex; gap: var(--ha-space-3, 12px); justify-content: flex-end; align-items: center; flex-wrap: wrap; padding: 8px 24px 16px; }
   `;
 
@@ -430,6 +432,7 @@ export class GrentonObjectsPanel extends LitElement {
         name: r.om_name || r.ha_name || "",
         grenton_id: r.grenton_id || "",
         clu,
+        module: r.module || "—",
         type: r.om_type || r.device_type || "—",
         entity_id: r.entity_id || "",
         entry_id: r.entry_id || "",
@@ -455,6 +458,7 @@ export class GrentonObjectsPanel extends LitElement {
       name: { title: "Nazwa (Grenton)", main: true, sortable: true, filterable: true, flex: 2 },
       grenton_id: { title: "Grenton ID", sortable: true, filterable: true, hideable: true, width: "160px" },
       clu: { title: "CLU", sortable: true, filterable: true, groupable: true, hideable: true, defaultHidden: true },
+      module: { title: "Moduł", sortable: true, filterable: true, groupable: true, hideable: true, defaultHidden: true },
       type: { title: "Typ Grenton", sortable: true, filterable: true, groupable: true, hideable: true, width: "140px" },
       entity_id: { title: "Encja HA", sortable: true, filterable: true, hideable: true, width: "260px",
         template: (a: any, b: any) => this._entityCell(b ?? a) },
@@ -557,6 +561,13 @@ export class GrentonObjectsPanel extends LitElement {
       <ha-dialog open .headerTitle=${row.status} @closed=${() => (this._issue = undefined)}>
         <div class="issue">
           ${d.sections.map((s) => html`<div class="issue-sec"><div class="issue-h">${s.h}</div><div>${s.body}</div></div>`)}
+          ${row.flag === "poll_redundant" && row.entry_id
+            ? html`<div class="issue-action">
+                <ha-button appearance="accent" size="small" @click=${() => this._fixDisablePolling(row)}>
+                  Napraw: wyłącz polling
+                </ha-button>
+              </div>`
+            : nothing}
         </div>
         <div slot="footer" class="dialog-footer">
           ${row.entry_id
@@ -565,9 +576,6 @@ export class GrentonObjectsPanel extends LitElement {
               </ha-button>`
             : nothing}
           <ha-button appearance="plain" data-dialog="close">Zamknij</ha-button>
-          ${row.flag === "poll_redundant" && row.entry_id
-            ? html`<ha-button appearance="accent" @click=${() => this._fixDisablePolling(row)}>Wyłącz polling</ha-button>`
-            : nothing}
         </div>
       </ha-dialog>
     `;
@@ -650,7 +658,7 @@ export class GrentonObjectsPanel extends LitElement {
     return merged.map((r): ViewRow => {
       const st = statusInfo(r);
       return {
-        id: "", name: "", grenton_id: "", clu: "", type: r.om_type || r.device_type || "—",
+        id: "", name: "", grenton_id: "", clu: "", module: "", type: r.om_type || r.device_type || "—",
         entity_id: "", entry_id: "", domain: "", update: "",
         updateCat: r.in_ha ? (r.mode ?? "brak") : "brak",
         status: st.label, sev: st.sev, statusCat: st.cat, flag: "",

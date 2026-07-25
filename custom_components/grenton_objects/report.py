@@ -142,12 +142,20 @@ def parse_system_xml(xml_bytes: bytes) -> dict:
             name_on_clu = child_text(spec, "nameOnCLU")
             obj_type = child_text(spec, "type") or child_text(spec, "typeName")
             if name_on_clu and _OBJECT_ID_RE.match(name_on_clu) and not name_on_clu.startswith("CLU"):
+                # Reliable module id from the hardware definition (<module><moduleID>),
+                # NOT the user-editable object name. The <module> may be an XStream
+                # reference shared by all I/Os of one physical module.
+                module_id = None
+                mod_el = spec.find("module")
+                if mod_el is not None:
+                    module_id = child_text(resolve(mod_el), "moduleID")
                 objects.append({
                     "clu": clu,
                     "obj_id": name_on_clu,
                     "grenton_id": f"{clu}->{name_on_clu}" if clu else name_on_clu,
                     "name": child_text(spec, "name"),
                     "type": obj_type,
+                    "module": module_id,
                 })
 
         children = tree_object.find("children")
@@ -417,6 +425,7 @@ def build_report(
         merged.append({
             "grenton_id": obj["grenton_id"],
             "clu": obj.get("clu"),
+            "module": obj.get("module") or "—",
             "om_name": obj["name"],
             "om_type": obj["type"],
             "is_din": obj["type"] == "DIN",
@@ -443,6 +452,7 @@ def build_report(
             merged.append({
                 "grenton_id": r["grenton_id"],
                 "clu": None,
+                "module": "—",
                 "om_name": None,
                 "om_type": None,
                 "is_din": False,

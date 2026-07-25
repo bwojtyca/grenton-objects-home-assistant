@@ -3,7 +3,7 @@
  * Copyright 2019 Google LLC
  * SPDX-License-Identifier: BSD-3-Clause
  */
-const U = globalThis, B = U.ShadowRoot && (U.ShadyCSS === void 0 || U.ShadyCSS.nativeShadow) && "adoptedStyleSheets" in Document.prototype && "replace" in CSSStyleSheet.prototype, W = Symbol(), J = /* @__PURE__ */ new WeakMap();
+const N = globalThis, B = N.ShadowRoot && (N.ShadyCSS === void 0 || N.ShadyCSS.nativeShadow) && "adoptedStyleSheets" in Document.prototype && "replace" in CSSStyleSheet.prototype, W = Symbol(), J = /* @__PURE__ */ new WeakMap();
 let le = class {
   constructor(e, s, i) {
     if (this._$cssResult$ = !0, i !== W) throw Error("CSSResult is not constructable. Use `unsafeCSS` or `css` instead.");
@@ -32,7 +32,7 @@ const _e = (t) => new le(typeof t == "string" ? t : t + "", void 0, W), me = (t,
 }, ye = (t, e) => {
   if (B) t.adoptedStyleSheets = e.map((s) => s instanceof CSSStyleSheet ? s : s.styleSheet);
   else for (const s of e) {
-    const i = document.createElement("style"), n = U.litNonce;
+    const i = document.createElement("style"), n = N.litNonce;
     n !== void 0 && i.setAttribute("nonce", n), i.textContent = s.cssText, t.appendChild(i);
   }
 }, Z = B ? (t) => t : (t) => t instanceof CSSStyleSheet ? ((e) => {
@@ -45,7 +45,7 @@ const _e = (t) => new le(typeof t == "string" ? t : t + "", void 0, W), me = (t,
  * Copyright 2017 Google LLC
  * SPDX-License-Identifier: BSD-3-Clause
  */
-const { is: ge, defineProperty: $e, getOwnPropertyDescriptor: be, getOwnPropertyNames: fe, getOwnPropertySymbols: ve, getPrototypeOf: we } = Object, D = globalThis, Q = D.trustedTypes, ke = Q ? Q.emptyScript : "", Ae = D.reactiveElementPolyfillSupport, E = (t, e) => t, N = { toAttribute(t, e) {
+const { is: ge, defineProperty: be, getOwnPropertyDescriptor: $e, getOwnPropertyNames: fe, getOwnPropertySymbols: ve, getPrototypeOf: we } = Object, D = globalThis, Q = D.trustedTypes, ke = Q ? Q.emptyScript : "", Ae = D.reactiveElementPolyfillSupport, E = (t, e) => t, U = { toAttribute(t, e) {
   switch (e) {
     case Boolean:
       t = t ? ke : null;
@@ -73,7 +73,7 @@ const { is: ge, defineProperty: $e, getOwnPropertyDescriptor: be, getOwnProperty
       }
   }
   return s;
-} }, F = (t, e) => !ge(t, e), X = { attribute: !0, type: String, converter: N, reflect: !1, useDefault: !1, hasChanged: F };
+} }, F = (t, e) => !ge(t, e), X = { attribute: !0, type: String, converter: U, reflect: !1, useDefault: !1, hasChanged: F };
 Symbol.metadata ??= Symbol("metadata"), D.litPropertyMetadata ??= /* @__PURE__ */ new WeakMap();
 let A = class extends HTMLElement {
   static addInitializer(e) {
@@ -85,11 +85,11 @@ let A = class extends HTMLElement {
   static createProperty(e, s = X) {
     if (s.state && (s.attribute = !1), this._$Ei(), this.prototype.hasOwnProperty(e) && ((s = Object.create(s)).wrapped = !0), this.elementProperties.set(e, s), !s.noAccessor) {
       const i = Symbol(), n = this.getPropertyDescriptor(e, i, s);
-      n !== void 0 && $e(this.prototype, e, n);
+      n !== void 0 && be(this.prototype, e, n);
     }
   }
   static getPropertyDescriptor(e, s, i) {
-    const { get: n, set: a } = be(this.prototype, e) ?? { get() {
+    const { get: n, set: a } = $e(this.prototype, e) ?? { get() {
       return this[s];
     }, set(r) {
       this[s] = r;
@@ -172,14 +172,14 @@ let A = class extends HTMLElement {
   _$ET(e, s) {
     const i = this.constructor.elementProperties.get(e), n = this.constructor._$Eu(e, i);
     if (n !== void 0 && i.reflect === !0) {
-      const a = (i.converter?.toAttribute !== void 0 ? i.converter : N).toAttribute(s, i.type);
+      const a = (i.converter?.toAttribute !== void 0 ? i.converter : U).toAttribute(s, i.type);
       this._$Em = e, a == null ? this.removeAttribute(n) : this.setAttribute(n, a), this._$Em = null;
     }
   }
   _$AK(e, s) {
     const i = this.constructor, n = i._$Eh.get(e);
     if (n !== void 0 && this._$Em !== n) {
-      const a = i.getPropertyOptions(n), r = typeof a.converter == "function" ? { fromAttribute: a.converter } : a.converter?.fromAttribute !== void 0 ? a.converter : N;
+      const a = i.getPropertyOptions(n), r = typeof a.converter == "function" ? { fromAttribute: a.converter } : a.converter?.fromAttribute !== void 0 ? a.converter : U;
       this._$Em = n;
       const l = r.fromAttribute(s, a.type);
       this[n] = l ?? this._$Ej?.get(n) ?? l, this._$Em = null;
@@ -262,7 +262,7 @@ A.elementStyles = [], A.shadowRootOptions = { mode: "open" }, A[E("elementProper
  * Copyright 2017 Google LLC
  * SPDX-License-Identifier: BSD-3-Clause
  */
-const V = globalThis, Y = (t) => t, I = V.trustedTypes, ee = I ? I.createPolicy("lit-html", { createHTML: (t) => t }) : void 0, ce = "$lit$", b = `lit$${Math.random().toFixed(9).slice(2)}$`, he = "?" + b, Se = `<${he}>`, w = document, C = () => w.createComment(""), O = (t) => t === null || typeof t != "object" && typeof t != "function", K = Array.isArray, je = (t) => K(t) || typeof t?.[Symbol.iterator] == "function", G = `[ 	
+const V = globalThis, Y = (t) => t, I = V.trustedTypes, ee = I ? I.createPolicy("lit-html", { createHTML: (t) => t }) : void 0, ce = "$lit$", $ = `lit$${Math.random().toFixed(9).slice(2)}$`, he = "?" + $, Se = `<${he}>`, w = document, C = () => w.createComment(""), O = (t) => t === null || typeof t != "object" && typeof t != "function", K = Array.isArray, je = (t) => K(t) || typeof t?.[Symbol.iterator] == "function", G = `[ 	
 \f\r]`, z = /<(?:(!--|\/[^a-zA-Z])|(\/?[a-zA-Z][^>\s]*)|(\/?$))/g, te = /-->/g, se = />/g, f = RegExp(`>|${G}(?:([^\\s"'>=/]+)(${G}*=${G}*(?:[^ 	
 \f\r"'\`<>=]|("|')|))|$)`, "g"), ie = /'/g, ne = /"/g, ue = /^(?:script|style|textarea|title)$/i, ze = (t) => (e, ...s) => ({ _$litType$: t, strings: e, values: s }), c = ze(1), S = Symbol.for("lit-noChange"), h = Symbol.for("lit-nothing"), ae = /* @__PURE__ */ new WeakMap(), v = w.createTreeWalker(w, 129);
 function pe(t, e) {
@@ -276,8 +276,8 @@ const Ee = (t, e) => {
     const o = t[l];
     let p, m, u = -1, g = 0;
     for (; g < o.length && (r.lastIndex = g, m = r.exec(o), m !== null); ) g = r.lastIndex, r === z ? m[1] === "!--" ? r = te : m[1] !== void 0 ? r = se : m[2] !== void 0 ? (ue.test(m[2]) && (n = RegExp("</" + m[2], "g")), r = f) : m[3] !== void 0 && (r = f) : r === f ? m[0] === ">" ? (r = n ?? z, u = -1) : m[1] === void 0 ? u = -2 : (u = r.lastIndex - m[2].length, p = m[1], r = m[3] === void 0 ? f : m[3] === '"' ? ne : ie) : r === ne || r === ie ? r = f : r === te || r === se ? r = z : (r = f, n = void 0);
-    const $ = r === f && t[l + 1].startsWith("/>") ? " " : "";
-    a += r === z ? o + Se : u >= 0 ? (i.push(p), o.slice(0, u) + ce + o.slice(u) + b + $) : o + b + (u === -2 ? l : $);
+    const b = r === f && t[l + 1].startsWith("/>") ? " " : "";
+    a += r === z ? o + Se : u >= 0 ? (i.push(p), o.slice(0, u) + ce + o.slice(u) + $ + b) : o + $ + (u === -2 ? l : b);
   }
   return [pe(t, a + (t[s] || "<?>") + (e === 2 ? "</svg>" : e === 3 ? "</math>" : "")), i];
 };
@@ -294,21 +294,21 @@ class P {
     for (; (n = v.nextNode()) !== null && o.length < l; ) {
       if (n.nodeType === 1) {
         if (n.hasAttributes()) for (const u of n.getAttributeNames()) if (u.endsWith(ce)) {
-          const g = m[r++], $ = n.getAttribute(u).split(b), T = /([.?@])?(.*)/.exec(g);
-          o.push({ type: 1, index: a, name: T[2], strings: $, ctor: T[1] === "." ? Ce : T[1] === "?" ? Oe : T[1] === "@" ? Pe : R }), n.removeAttribute(u);
-        } else u.startsWith(b) && (o.push({ type: 6, index: a }), n.removeAttribute(u));
+          const g = m[r++], b = n.getAttribute(u).split($), T = /([.?@])?(.*)/.exec(g);
+          o.push({ type: 1, index: a, name: T[2], strings: b, ctor: T[1] === "." ? Ce : T[1] === "?" ? Oe : T[1] === "@" ? Pe : R }), n.removeAttribute(u);
+        } else u.startsWith($) && (o.push({ type: 6, index: a }), n.removeAttribute(u));
         if (ue.test(n.tagName)) {
-          const u = n.textContent.split(b), g = u.length - 1;
+          const u = n.textContent.split($), g = u.length - 1;
           if (g > 0) {
             n.textContent = I ? I.emptyScript : "";
-            for (let $ = 0; $ < g; $++) n.append(u[$], C()), v.nextNode(), o.push({ type: 2, index: ++a });
+            for (let b = 0; b < g; b++) n.append(u[b], C()), v.nextNode(), o.push({ type: 2, index: ++a });
             n.append(u[g], C());
           }
         }
       } else if (n.nodeType === 8) if (n.data === he) o.push({ type: 2, index: a });
       else {
         let u = -1;
-        for (; (u = n.data.indexOf(b, u + 1)) !== -1; ) o.push({ type: 7, index: a }), u += b.length - 1;
+        for (; (u = n.data.indexOf($, u + 1)) !== -1; ) o.push({ type: 7, index: a }), u += $.length - 1;
       }
       a++;
     }
@@ -516,15 +516,15 @@ class x extends A {
   }
 }
 x._$litElement$ = !0, x.finalized = !0, q.litElementHydrateSupport?.({ LitElement: x });
-const Ue = q.litElementPolyfillSupport;
-Ue?.({ LitElement: x });
+const Ne = q.litElementPolyfillSupport;
+Ne?.({ LitElement: x });
 (q.litElementVersions ??= []).push("4.2.2");
 /**
  * @license
  * Copyright 2017 Google LLC
  * SPDX-License-Identifier: BSD-3-Clause
  */
-const Ne = (t) => (e, s) => {
+const Ue = (t) => (e, s) => {
   s !== void 0 ? s.addInitializer(() => {
     customElements.define(t, e);
   }) : customElements.define(t, e);
@@ -534,7 +534,7 @@ const Ne = (t) => (e, s) => {
  * Copyright 2017 Google LLC
  * SPDX-License-Identifier: BSD-3-Clause
  */
-const Ie = { attribute: !0, type: String, converter: N, reflect: !1, hasChanged: F }, De = (t = Ie, e, s) => {
+const Ie = { attribute: !0, type: String, converter: U, reflect: !1, hasChanged: F }, De = (t = Ie, e, s) => {
   const { kind: i, metadata: n } = s;
   let a = globalThis.litPropertyMetadata.get(n);
   if (a === void 0 && globalThis.litPropertyMetadata.set(n, a = /* @__PURE__ */ new Map()), i === "setter" && ((t = Object.create(t)).wrapped = !0), a.set(s.name, t), i === "accessor") {
@@ -973,6 +973,7 @@ let d = class extends x {
         name: s.om_name || s.ha_name || "",
         grenton_id: s.grenton_id || "",
         clu: l,
+        module: s.module || "—",
         type: s.om_type || s.device_type || "—",
         entity_id: s.entity_id || "",
         entry_id: s.entry_id || "",
@@ -991,6 +992,7 @@ let d = class extends x {
       name: { title: "Nazwa (Grenton)", main: !0, sortable: !0, filterable: !0, flex: 2 },
       grenton_id: { title: "Grenton ID", sortable: !0, filterable: !0, hideable: !0, width: "160px" },
       clu: { title: "CLU", sortable: !0, filterable: !0, groupable: !0, hideable: !0, defaultHidden: !0 },
+      module: { title: "Moduł", sortable: !0, filterable: !0, groupable: !0, hideable: !0, defaultHidden: !0 },
       type: { title: "Typ Grenton", sortable: !0, filterable: !0, groupable: !0, hideable: !0, width: "140px" },
       entity_id: {
         title: "Encja HA",
@@ -1091,6 +1093,11 @@ let d = class extends x {
       <ha-dialog open .headerTitle=${t.status} @closed=${() => this._issue = void 0}>
         <div class="issue">
           ${e.sections.map((s) => c`<div class="issue-sec"><div class="issue-h">${s.h}</div><div>${s.body}</div></div>`)}
+          ${t.flag === "poll_redundant" && t.entry_id ? c`<div class="issue-action">
+                <ha-button appearance="accent" size="small" @click=${() => this._fixDisablePolling(t)}>
+                  Napraw: wyłącz polling
+                </ha-button>
+              </div>` : h}
         </div>
         <div slot="footer" class="dialog-footer">
           ${t.entry_id ? c`<ha-button appearance="plain" @click=${() => {
@@ -1099,7 +1106,6 @@ let d = class extends x {
                 Konfiguruj encję
               </ha-button>` : h}
           <ha-button appearance="plain" data-dialog="close">Zamknij</ha-button>
-          ${t.flag === "poll_redundant" && t.entry_id ? c`<ha-button appearance="accent" @click=${() => this._fixDisablePolling(t)}>Wyłącz polling</ha-button>` : h}
         </div>
       </ha-dialog>
     `;
@@ -1167,6 +1173,7 @@ let d = class extends x {
         name: "",
         grenton_id: "",
         clu: "",
+        module: "",
         type: e.om_type || e.device_type || "—",
         entity_id: "",
         entry_id: "",
@@ -1277,6 +1284,7 @@ d.styles = me`
     .issue { line-height: 1.5; max-width: 460px; }
     .issue-sec { margin-bottom: 12px; }
     .issue-h { font-weight: 600; margin-bottom: 2px; }
+    .issue-action { margin-top: 6px; }
     .dialog-footer { display: flex; gap: var(--ha-space-3, 12px); justify-content: flex-end; align-items: center; flex-wrap: wrap; padding: 8px 24px 16px; }
   `;
 _([
@@ -1328,7 +1336,7 @@ _([
   y()
 ], d.prototype, "_statSel", 2);
 d = _([
-  Ne("grenton-objects-panel")
+  Ue("grenton-objects-panel")
 ], d);
 export {
   d as GrentonObjectsPanel
