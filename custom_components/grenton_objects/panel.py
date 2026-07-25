@@ -18,7 +18,7 @@ import logging
 import os
 
 import voluptuous as vol
-from homeassistant.components import frontend, panel_custom, websocket_api
+from homeassistant.components import frontend, websocket_api
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.core import HomeAssistant
 
@@ -27,18 +27,20 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-PANEL_URL_PATH = DOMAIN  # sidebar panel frontend path
+PANEL_URL_PATH = DOMAIN  # panel reached directly at /{DOMAIN} (no sidebar entry)
 PANEL_JS_URL = "/grenton_objects_frontend/panel.js"
 PANEL_ELEMENT = "grenton-objects-panel"
 _REGISTERED_FLAG = f"{DOMAIN}_panel_registered"
 
 
 async def async_setup_panel(hass: HomeAssistant) -> None:
-    """Register the static frontend, the websocket command and the sidebar panel.
+    """Register the static frontend, the websocket command and the panel.
 
-    Registered as a normal sidebar panel (NOT via ``config_panel_domain``): for a
-    multi-entry integration that would hijack each entry's gear/"Configure" and
-    suppress the per-entry options flow, so it is deliberately avoided.
+    The panel is registered with ``show_in_sidebar=False`` (no sidebar icon) and
+    WITHOUT ``config_panel_domain`` — it is reached directly via its URL
+    ``/{DOMAIN}``. ``config_panel_domain`` is deliberately avoided: for a
+    multi-entry integration it hijacks each entry's gear/"Configure" and
+    suppresses the per-entry options flow.
     """
     if hass.data.get(_REGISTERED_FLAG):
         return
@@ -52,15 +54,20 @@ async def async_setup_panel(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_analyze_project)
 
     if not frontend.async_panel_exists(hass, PANEL_URL_PATH):
-        await panel_custom.async_register_panel(
-            hass=hass,
+        frontend.async_register_built_in_panel(
+            hass,
+            "custom",
             frontend_url_path=PANEL_URL_PATH,
-            webcomponent_name=PANEL_ELEMENT,
-            module_url=PANEL_JS_URL,
-            embed_iframe=False,
             require_admin=True,
-            sidebar_title="Grenton",
-            sidebar_icon="mdi:home-automation",
+            show_in_sidebar=False,
+            config={
+                "_panel_custom": {
+                    "name": PANEL_ELEMENT,
+                    "module_url": PANEL_JS_URL,
+                    "embed_iframe": False,
+                    "trust_external": False,
+                }
+            },
         )
 
 
