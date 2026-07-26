@@ -182,23 +182,35 @@ def _infer_grenton_type(device_type: str, om_type: str | None) -> str | None:
         vol.Required("device_type"): str,
         vol.Optional("om_type"): str,
         vol.Optional("name"): str,
+        # Optional overrides edited by the user in the confirm form; anything
+        # omitted falls back to inference/defaults below.
+        vol.Optional("api_endpoint"): str,
+        vol.Optional("grenton_type"): str,
+        vol.Optional("device_class"): str,
+        vol.Optional("reversed"): bool,
+        vol.Optional("auto_update"): bool,
+        vol.Optional("update_interval"): int,
     }
 )
 @websocket_api.require_admin
 @websocket_api.async_response
 async def ws_add_object(hass, connection, msg) -> None:
     """Repair action: add an HA entity for a Grenton object present in the .omp
-    but not yet in HA. Creates a config entry via the flow's import step; the
-    gateway endpoint is reused from an existing entry."""
+    but not yet in HA. Creates a config entry via the flow's import step, using
+    the values edited in the confirm form (with sensible fallbacks): the gateway
+    endpoint defaults to an existing entry's, the Grenton type is inferred from
+    the OM type, polling is on by default."""
     device_type = msg["device_type"]
     if device_type not in _ADD_DEVICE_TYPES:
         connection.send_error(msg["id"], "bad_type", "Nieobsługiwany typ encji.")
         return
-    endpoint = None
-    for entry in hass.config_entries.async_entries(DOMAIN):
-        endpoint = entry.options.get(CONF_API_ENDPOINT) or entry.data.get(CONF_API_ENDPOINT)
-        if endpoint:
-            break
+
+    endpoint = msg.get("api_endpoint")
+    if not endpoint:
+        for entry in hass.config_entries.async_entries(DOMAIN):
+            endpoint = entry.options.get(CONF_API_ENDPOINT) or entry.data.get(CONF_API_ENDPOINT)
+            if endpoint:
+                break
     if not endpoint:
         connection.send_error(msg["id"], "no_endpoint", "Brak istniejącego endpointu — dodaj pierwszy obiekt ręcznie.")
         return
@@ -208,15 +220,18 @@ async def ws_add_object(hass, connection, msg) -> None:
         CONF_API_ENDPOINT: endpoint,
         CONF_GRENTON_ID: msg["grenton_id"],
         CONF_OBJECT_NAME: msg.get("name") or msg["grenton_id"],
-        CONF_AUTO_UPDATE: True,
-        CONF_UPDATE_INTERVAL: DEFAULT_UPDATE_INTERVAL,
+        CONF_AUTO_UPDATE: msg.get("auto_update", True),
+        CONF_UPDATE_INTERVAL: msg.get("update_interval", DEFAULT_UPDATE_INTERVAL),
     }
-    grenton_type = _infer_grenton_type(device_type, msg.get("om_type"))
+    grenton_type = msg.get("grenton_type") or _infer_grenton_type(device_type, msg.get("om_type"))
     if grenton_type:
         data[CONF_GRENTON_TYPE] = grenton_type
+    if device_type in ("switch", "cover"):
+        data[CONF_REVERSED] = msg.get("reversed", False)
     if device_type == "cover":
-        data[CONF_DEVICE_CLASS] = "shutter"
-        data[CONF_REVERSED] = False
+        data[CONF_DEVICE_CLASS] = msg.get("device_class") or "shutter"
+    elif device_type in ("sensor", "binary_sensor") and msg.get("device_class"):
+        data[CONF_DEVICE_CLASS] = msg["device_class"]
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": "import"}, data=data

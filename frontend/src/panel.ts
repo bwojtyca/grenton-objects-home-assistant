@@ -73,6 +73,20 @@ function allowedDeviceTypes(omType: string): string[] {
   return ALL_DEVICE_TYPES;
 }
 
+// Labels for the add/confirm ha-form (same widget mechanism as the config flow).
+const ADD_FIELD_LABELS: Record<string, string> = {
+  name: "Nazwa encji",
+  device_type: "Typ encji w HA",
+  api_endpoint: "Adres bramki (API)",
+  grenton_id: "Grenton ID",
+  device_class: "Klasa urządzenia",
+  reversed: "Odwróć kierunek",
+  auto_update: "Automatyczne odświeżanie (polling)",
+  update_interval: "Częstotliwość odświeżania (s)",
+};
+
+const COVER_CLASSES = ["shutter", "blind", "curtain", "awning", "garage", "gate", "window", "door", "damper", "shade"];
+
 interface StatusInfo {
   label: string;
   sev: keyof typeof SEV_HEX;
@@ -158,7 +172,7 @@ export class GrentonObjectsPanel extends LitElement {
   @state() private _summaryOpen = false;
   @state() private _issue?: ViewRow;
   @state() private _addRow?: ViewRow; // row being added to HA (opens the add/confirm dialog)
-  @state() private _addType = ""; // chosen HA device type in that dialog
+  @state() private _addData: Record<string, any> = {}; // editable ha-form values for that dialog
   @state() private _columnOrder?: string[];
   @state() private _hiddenColumns?: string[];
   @state() private _search = "";
@@ -208,8 +222,9 @@ export class GrentonObjectsPanel extends LitElement {
     .issue-sec { margin-bottom: 12px; }
     .issue-h { font-weight: 600; margin-bottom: 2px; }
     .issue-action { margin-top: 6px; }
-    .add-dialog ha-select { width: 100%; }
-    .add-hint { color: var(--secondary-text-color); margin: 12px 0 4px; }
+    .add-dialog { min-width: min(460px, 82vw); }
+    .add-dialog ha-form { display: block; }
+    .add-hint { color: var(--secondary-text-color); margin: 4px 0 12px; }
     .dialog-footer { display: flex; gap: var(--ha-space-3, 12px); justify-content: flex-end; align-items: center; flex-wrap: wrap; padding: 8px 24px 16px; }
   `;
 
@@ -645,56 +660,77 @@ export class GrentonObjectsPanel extends LitElement {
     }
   }
 
-  // Open the add/confirm dialog for a Grenton object missing in HA. The device
-  // type is preselected to the first type valid for its OM type.
+  private _defaultEndpoint(): string {
+    return this._report?.summary.endpoints?.[0]?.[0] ?? "";
+  }
+
+  // Open the add/confirm dialog for a Grenton object missing in HA. Fields are
+  // prefilled from the OM object and existing HA config, and stay editable.
   private _openAdd(row: ViewRow) {
-    this._addType = allowedDeviceTypes(row.type)[0];
+    const allowed = allowedDeviceTypes(row.type);
+    const deviceType = allowed[0];
+    this._addData = {
+      name: row.name || row.grenton_id,
+      device_type: deviceType,
+      api_endpoint: this._defaultEndpoint(),
+      grenton_id: row.grenton_id,
+      auto_update: true,
+      update_interval: 30,
+      reversed: false,
+      device_class: deviceType === "cover" ? "shutter" : undefined,
+    };
     this._addRow = row;
     this._issue = undefined;
   }
 
-  private _addSummary(row: ViewRow, deviceType: string): { label: string; value: string }[] {
-    return [
-      { label: "Nowa encja w HA", value: DEVICE_TYPE_LABELS[deviceType] ?? deviceType },
-      { label: "Obiekt Grenton", value: `${row.grenton_id} · typ ${row.type}` },
-      { label: "Nazwa", value: row.name || row.grenton_id },
-      { label: "Adres bramki", value: "jak w pozostałych obiektach Grenton" },
-      { label: "Aktualizacja", value: "polling co 30 s (push ustawisz później w OM)" },
+  // ha-form schema mirroring the config flow's fields for the chosen device
+  // type. Recomputed on every render, so type-specific fields appear/disappear
+  // as the user changes the type.
+  private _addSchema(deviceType: string, omType: string) {
+    const allowed = allowedDeviceTypes(omType);
+    const schema: any[] = [
+      { name: "name", required: true, selector: { text: {} } },
+      { name: "device_type", required: true,
+        selector: { select: { mode: "dropdown", options: allowed.map((d) => ({ value: d, label: DEVICE_TYPE_LABELS[d] })) } } },
+      { name: "api_endpoint", required: true, selector: { text: {} } },
+      { name: "grenton_id", required: true, selector: { text: {} } },
     ];
+    if (deviceType === "cover") {
+      schema.push({ name: "device_class",
+        selector: { select: { mode: "dropdown", options: COVER_CLASSES.map((c) => ({ value: c, label: c })) } } });
+    }
+    if (deviceType === "switch" || deviceType === "cover") {
+      schema.push({ name: "reversed", selector: { boolean: {} } });
+    }
+    if (deviceType !== "climate") {
+      schema.push({ name: "auto_update", selector: { boolean: {} } });
+    }
+    schema.push({ name: "update_interval",
+      selector: { number: { min: 1, max: 3600, mode: "box", unit_of_measurement: "s" } } });
+    return schema;
   }
+
+  private _addComputeLabel = (s: { name: string }) => ADD_FIELD_LABELS[s.name] ?? s.name;
 
   private _addDialog() {
     const row = this._addRow;
     if (!row) return nothing;
-    const allowed = allowedDeviceTypes(row.type);
-    const deviceType = this._addType || allowed[0];
+    const deviceType = this._addData.device_type || allowedDeviceTypes(row.type)[0];
     return html`
       <ha-dialog open .headerTitle=${"Dodaj obiekt do HA"} @closed=${() => (this._addRow = undefined)}>
         <div class="add-dialog">
-          ${allowed.length > 1
-            ? html`
-                <ha-select
-                  label="Typ encji w HA"
-                  .value=${deviceType}
-                  naturalMenuWidth
-                  fixedMenuPosition
-                  @selected=${(e: any) => (this._addType = e.target.value)}
-                  @closed=${(e: Event) => e.stopPropagation()}
-                >
-                  ${allowed.map((d) => html`<ha-list-item .value=${d}>${DEVICE_TYPE_LABELS[d]}</ha-list-item>`)}
-                </ha-select>
-                <p class="add-hint">Typ „${row.type}" można wystawić na kilka sposobów — wybierz właściwy.</p>
-              `
-            : nothing}
-          <p class="add-hint">Po potwierdzeniu zostanie wykonane:</p>
-          <ha-list>
-            ${this._addSummary(row, deviceType).map(
-              (it) => html`<ha-list-item twoline noninteractive>
-                <span>${it.value}</span>
-                <span slot="secondary">${it.label}</span>
-              </ha-list-item>`
-            )}
-          </ha-list>
+          <p class="add-hint">
+            Obiekt „${row.grenton_id}" (${row.type}) zostanie dodany jako encja HA.
+            Sprawdź i w razie potrzeby popraw poniższe pola.
+          </p>
+          <ha-form
+            .hass=${this.hass}
+            .data=${this._addData}
+            .schema=${this._addSchema(deviceType, row.type)}
+            .computeLabel=${this._addComputeLabel}
+            @value-changed=${this._onAddFormChanged}
+          ></ha-form>
+          <p class="add-hint">Aktualizację przez push (Grenton→HA) skonfigurujesz później w OM.</p>
         </div>
         <div slot="footer" class="dialog-footer">
           <ha-button appearance="plain" data-dialog="close">Anuluj</ha-button>
@@ -704,20 +740,36 @@ export class GrentonObjectsPanel extends LitElement {
     `;
   }
 
+  private _onAddFormChanged = (e: any) => {
+    const v = { ...e.detail.value };
+    // Give cover a sensible default class when the user switches to it.
+    if (v.device_type === "cover" && !v.device_class) v.device_class = "shutter";
+    this._addData = v;
+  };
+
   private async _confirmAddObject(row: ViewRow) {
-    if (!row.grenton_id) return;
-    const deviceType = this._addType || allowedDeviceTypes(row.type)[0];
+    const d = this._addData;
+    const grentonId = (d.grenton_id || "").trim();
+    if (!grentonId || !d.device_type) {
+      this._toast("Uzupełnij Grenton ID i typ encji.");
+      return;
+    }
     this._addRow = undefined;
     try {
       await this.hass.connection.sendMessagePromise({
         type: "grenton_objects/add_object",
-        grenton_id: row.grenton_id,
-        device_type: deviceType,
+        grenton_id: grentonId,
+        device_type: d.device_type,
         om_type: row.type,
-        name: row.name,
+        name: d.name || grentonId,
+        api_endpoint: d.api_endpoint || undefined,
+        auto_update: d.auto_update !== false,
+        update_interval: Number(d.update_interval) || 30,
+        ...(d.device_class ? { device_class: d.device_class } : {}),
+        ...(d.device_type === "switch" || d.device_type === "cover" ? { reversed: !!d.reversed } : {}),
       });
       await this._reanalyze(); // recompute report → object now shows as present in HA
-      this._toast(`Dodano „${row.name || row.grenton_id}" do HA jako ${deviceType}.`);
+      this._toast(`Dodano „${d.name || grentonId}" do HA jako ${d.device_type}.`);
     } catch (e: any) {
       this._toast(`Nie udało się dodać: ${e?.message || e?.code || "błąd"}`);
     }

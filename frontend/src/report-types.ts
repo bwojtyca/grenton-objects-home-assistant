@@ -43,6 +43,7 @@ export interface Report {
     polling: number;
     push: number;
     per_domain: Record<string, { polling: number; push: number }>;
+    endpoints: [string, number][];
   };
   orphans: unknown[];
   push_no_event: unknown[];
