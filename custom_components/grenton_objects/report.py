@@ -58,6 +58,16 @@ _DOMAIN_SERVICES = {
     "alarm_control_panel": set(),
 }
 
+# Default service to suggest when repairing a mis-wired push (the "on/off" one).
+_PRIMARY_SERVICE = {
+    "light": "set_state",
+    "switch": "set_state",
+    "binary_sensor": "set_state",
+    "cover": "set_cover",
+    "sensor": "set_value",
+    "climate": "set_therm_state",
+}
+
 # Grenton-side objects/scripts the integration's documentation requires. The
 # listener pair is always needed; the queue objects are needed only when push
 # (dynamic) updates are used.
@@ -368,6 +378,39 @@ def build_report(
     bad_service_entities = {m["ha_entity"] for m in push_service_mismatch}
     wrong_object_entities = {m["ha_entity"] for m in push_object_mismatch}
 
+    # Auto-repairable push problems, expressed as single-argument edits to the
+    # HA_Integration_Queue_Prepare call in system.xml (see rewrite.py). Each fix
+    # is located by its current target entity; the frontend lets the user pick
+    # which to apply and downloads a corrected .omp.
+    entity_by_object_id = {
+        _object_id(r["grenton_id"]): r["entity_id"]
+        for r in rows if r["entity_id"] and r["grenton_id"]
+    }
+    push_fixes = []
+    for m in push_service_mismatch:
+        allowed = _DOMAIN_SERVICES.get(m["device_type"]) or set()
+        trimmed = m["service"].strip()
+        suggested = trimmed if trimmed in allowed else _PRIMARY_SERVICE.get(m["device_type"], trimmed)
+        push_fixes.append({
+            "kind": "service",
+            "target_entity": m["ha_entity"],
+            "device_type": m["device_type"],
+            "current_service": m["service"],
+            "suggested_service": suggested,
+            "valid_services": sorted(allowed),
+        })
+    for m in push_object_mismatch:
+        new_entity = entity_by_object_id.get(_object_id(m["source_grenton_id"]))
+        if not new_entity or new_entity == m["ha_entity"]:
+            continue  # source object has no HA entity, or already consistent
+        push_fixes.append({
+            "kind": "retarget",
+            "target_entity": m["ha_entity"],
+            "new_entity": new_entity,
+            "source_grenton_id": m["source_grenton_id"],
+            "entity_grenton_id": m["entity_grenton_id"],
+        })
+
     ha_norm_ids = {_normalize_grenton_id(r["grenton_id"]) for r in rows}
     not_in_ha = [
         obj for obj in om_objects
@@ -495,6 +538,7 @@ def build_report(
         "push_object_mismatch": push_object_mismatch,
         "poll_with_push": poll_with_push,
         "push_orphan_targets": push_orphan_targets,
+        "push_fixes": push_fixes,
         "not_in_ha": not_in_ha,
         "not_in_ha_by_type": Counter(o["type"] for o in not_in_ha).most_common(),
         "unsupported_count": len(unsupported_objects),

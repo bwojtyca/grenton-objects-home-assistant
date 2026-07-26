@@ -24,6 +24,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.loader import async_get_integration
 
 from . import report
+from . import rewrite
 from .const import (
     DOMAIN,
     CONF_API_ENDPOINT,
@@ -66,6 +67,7 @@ async def async_setup_panel(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_analyze_project)
     websocket_api.async_register_command(hass, ws_set_auto_update)
     websocket_api.async_register_command(hass, ws_add_object)
+    websocket_api.async_register_command(hass, ws_rewrite_project)
 
     # Cache-bust the module URL with the integration version, otherwise the
     # browser/frontend keeps serving an old panel.js from the fixed URL.
@@ -240,3 +242,37 @@ async def ws_add_object(hass, connection, msg) -> None:
         connection.send_error(msg["id"], result.get("reason") or "abort", "Nie dodano (możliwy duplikat).")
         return
     connection.send_result(msg["id"], {"ok": True})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "grenton_objects/rewrite_omp",
+        vol.Required("omp_base64"): str,
+        vol.Required("fixes"): [
+            {
+                vol.Required("target_entity"): str,
+                vol.Optional("new_service"): str,
+                vol.Optional("new_entity"): str,
+            }
+        ],
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_rewrite_project(hass, connection, msg) -> None:
+    """Repair action (Grenton-side): apply the selected push-binding fixes to an
+    uploaded .omp and return a corrected copy (base64) to download. The user's
+    original file is never modified; edits are minimal, single-argument swaps
+    (see rewrite.py) and must be verified in Object Manager before use."""
+    try:
+        data = base64.b64decode(msg["omp_base64"])
+        result = await hass.async_add_executor_job(rewrite.apply_push_fixes, data, msg["fixes"])
+    except Exception as err:  # noqa: BLE001 - surface any rewrite failure to the panel
+        _LOGGER.warning("Grenton project rewrite failed: %s", err)
+        connection.send_error(msg["id"], "rewrite_failed", str(err))
+        return
+    connection.send_result(msg["id"], {
+        "omp_base64": base64.b64encode(result["omp"]).decode("ascii"),
+        "applied": result["applied"],
+        "skipped": result["skipped"],
+    })

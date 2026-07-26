@@ -12,7 +12,19 @@
 import { LitElement, html, css, nothing, type PropertyValues, type TemplateResult } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { stateColorCss } from "./state-color";
-import type { HomeAssistant, MergedRow, Report, TypeSummaryEntry } from "./report-types";
+import type { HomeAssistant, MergedRow, PushFix, Report, TypeSummaryEntry } from "./report-types";
+
+// A push-binding fix staged for the .omp download (accumulated, then applied in
+// one corrected file). `title`/`detail` are the human description shown in the
+// pending list; new_service/new_entity are the actual edit sent to the backend.
+interface PendingFix {
+  target_entity: string;
+  kind: "service" | "retarget";
+  title: string;
+  detail: string;
+  new_service?: string;
+  new_entity?: string;
+}
 
 const DOMAIN = "grenton_objects";
 const PAGE_TITLE = "Analiza projektu Grenton";
@@ -173,6 +185,9 @@ export class GrentonObjectsPanel extends LitElement {
   @state() private _issue?: ViewRow;
   @state() private _addRow?: ViewRow; // row being added to HA (opens the add/confirm dialog)
   @state() private _addData: Record<string, any> = {}; // editable ha-form values for that dialog
+  @state() private _svcChoice = ""; // chosen service in the push-service issue dialog
+  @state() private _pendingFixes: PendingFix[] = []; // staged .omp push fixes
+  @state() private _pendingOpen = false; // pending-changes dialog open
   @state() private _columnOrder?: string[];
   @state() private _hiddenColumns?: string[];
   @state() private _search = "";
@@ -222,9 +237,23 @@ export class GrentonObjectsPanel extends LitElement {
     .issue-sec { margin-bottom: 12px; }
     .issue-h { font-weight: 600; margin-bottom: 2px; }
     .issue-action { margin-top: 6px; }
+    .add-action { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
     .add-dialog { min-width: min(460px, 82vw); }
     .add-dialog ha-form { display: block; }
     .add-hint { color: var(--secondary-text-color); margin: 4px 0 12px; }
+    /* pending .omp changes bar (above the table) */
+    .pending-bar {
+      display: flex; align-items: center; gap: 12px; width: 100%; box-sizing: border-box;
+      padding: 8px 16px; color: var(--primary-text-color);
+      background: color-mix(in srgb, var(--warning-color) 16%, var(--card-background-color));
+      border-bottom: 1px solid var(--warning-color);
+    }
+    .pending-bar > ha-icon { color: var(--warning-color); flex: 0 0 auto; }
+    .pending-info {
+      flex: 1; text-align: left; background: none; border: none; padding: 0;
+      color: inherit; font: inherit; cursor: pointer; text-decoration: underline dotted;
+    }
+    .pending ha-list { display: block; margin-top: 8px; }
     .dialog-footer { display: flex; gap: var(--ha-space-3, 12px); justify-content: flex-end; align-items: center; flex-wrap: wrap; padding: 8px 24px 16px; }
   `;
 
@@ -308,7 +337,7 @@ export class GrentonObjectsPanel extends LitElement {
     const table = customElements.get("hass-tabs-subpage-data-table")
       ? this._subpage()
       : this._fallbackTable();
-    return html`${table}${this._summaryDialog()}${this._issueDialog()}${this._addDialog()}`;
+    return html`${table}${this._summaryDialog()}${this._issueDialog()}${this._addDialog()}${this._pendingDialog()}`;
   }
 
   private _subpage() {
@@ -338,7 +367,7 @@ export class GrentonObjectsPanel extends LitElement {
           <ha-icon icon="mdi:upload"></ha-icon>
         </ha-icon-button>
         <input type="file" accept=".omp,.zip" style="display:none" @change=${this._onFileInput} />
-        <div slot="top-header">${this._statStrip()}</div>
+        <div slot="top-header">${this._statStrip()}${this._pendingBar()}</div>
         ${this._filterGroups()}
       </hass-tabs-subpage-data-table>
     `;
@@ -558,7 +587,7 @@ export class GrentonObjectsPanel extends LitElement {
     return html`<span
       class="status-cell"
       title="Kliknij po szczegóły i wskazówki"
-      @click=${() => (this._issue = row)}
+      @click=${() => this._openIssue(row)}
     >${label}</span>`;
   }
 
@@ -629,6 +658,9 @@ export class GrentonObjectsPanel extends LitElement {
                 </ha-button>
               </div>`
             : nothing}
+          ${(row.flag === "push_bad_service" || row.flag === "push_wrong_object") && this._pushFixFor(row)
+            ? this._pushFixAction(row, this._pushFixFor(row)!)
+            : nothing}
         </div>
         <div slot="footer" class="dialog-footer">
           ${row.entry_id
@@ -640,6 +672,172 @@ export class GrentonObjectsPanel extends LitElement {
         </div>
       </ha-dialog>
     `;
+  }
+
+  private _openIssue(row: ViewRow) {
+    const fix = this._pushFixFor(row);
+    this._svcChoice = fix?.kind === "service" ? fix.suggested_service ?? "" : "";
+    this._issue = row;
+  }
+
+  // ─── push-binding fixes (Grenton-side, staged into a .omp download) ─────
+
+  private _pushFixFor(row: ViewRow): PushFix | undefined {
+    if (!row.entity_id) return undefined;
+    return this._report?.push_fixes?.find((f) => f.target_entity === row.entity_id);
+  }
+
+  private _pushFixAction(row: ViewRow, fix: PushFix): TemplateResult {
+    if (fix.kind === "service") {
+      const services = fix.valid_services ?? [];
+      const chosen = this._svcChoice || fix.suggested_service || services[0] || "";
+      return html`
+        <div class="issue-action add-action">
+          <ha-select
+            label="Poprawna usługa"
+            .value=${chosen}
+            naturalMenuWidth
+            fixedMenuPosition
+            @selected=${(e: any) => (this._svcChoice = e.target.value)}
+            @closed=${(e: Event) => e.stopPropagation()}
+          >
+            ${services.map((s) => html`<ha-list-item .value=${s}>${s}</ha-list-item>`)}
+          </ha-select>
+          <ha-button appearance="accent" size="small" @click=${() => this._stageServiceFix(row, fix)}>
+            Dodaj poprawkę do .omp
+          </ha-button>
+        </div>
+      `;
+    }
+    return html`
+      <div class="issue-action">
+        <div class="issue-h">Proponowana poprawka w .omp</div>
+        <div>Cel push zostanie przekierowany na encję pasującą do źródła: <b>${fix.new_entity}</b>.</div>
+        <ha-button appearance="accent" size="small" @click=${() => this._stageRetargetFix(row, fix)} style="margin-top:6px">
+          Dodaj poprawkę do .omp
+        </ha-button>
+      </div>
+    `;
+  }
+
+  private _stageServiceFix(row: ViewRow, fix: PushFix) {
+    const svc = this._svcChoice || fix.suggested_service || "";
+    this._stageFix({
+      target_entity: fix.target_entity,
+      kind: "service",
+      title: `Usługa push — ${row.entity_id}`,
+      detail: `„${fix.current_service}" → „${svc}"`,
+      new_service: svc,
+    });
+  }
+
+  private _stageRetargetFix(row: ViewRow, fix: PushFix) {
+    this._stageFix({
+      target_entity: fix.target_entity,
+      kind: "retarget",
+      title: `Cel push — ${row.entity_id}`,
+      detail: `push → ${fix.new_entity} (encja pasująca do źródła ${fix.source_grenton_id})`,
+      new_entity: fix.new_entity,
+    });
+  }
+
+  private _stageFix(fix: PendingFix) {
+    const rest = this._pendingFixes.filter(
+      (x) => !(x.target_entity === fix.target_entity && x.kind === fix.kind)
+    );
+    this._pendingFixes = [...rest, fix];
+    this._issue = undefined;
+    this._toast("Dodano poprawkę do puli — pobierz .omp z paska nad tabelą.");
+  }
+
+  private _pendingBar() {
+    const n = this._pendingFixes.length;
+    if (!n) return nothing;
+    return html`
+      <div class="pending-bar">
+        <ha-icon icon="mdi:file-document-edit-outline"></ha-icon>
+        <button class="pending-info" @click=${() => (this._pendingOpen = true)}>
+          ${n} ${n === 1 ? "poprawka" : "poprawek"} do pliku .omp — kliknij, aby przejrzeć
+        </button>
+        <ha-button appearance="accent" size="small" @click=${this._downloadRewrite}>Pobierz poprawiony .omp</ha-button>
+        <ha-button appearance="plain" size="small" @click=${this._discardPending}>Odrzuć</ha-button>
+      </div>
+    `;
+  }
+
+  private _pendingDialog() {
+    if (!this._pendingOpen) return nothing;
+    return html`
+      <ha-dialog open .headerTitle=${"Poprawki do pliku .omp"} @closed=${() => (this._pendingOpen = false)}>
+        <div class="pending">
+          <ha-alert alert-type="warning">
+            Zmiany dotyczą pliku projektu Grentona. Pobierz kopię i <b>zweryfikuj w Object Managerze</b>
+            przed wgraniem do CLU — Twój oryginalny plik nie jest modyfikowany.
+          </ha-alert>
+          <ha-list>
+            ${this._pendingFixes.map(
+              (f) => html`<ha-list-item twoline hasMeta>
+                <span>${f.title}</span>
+                <span slot="secondary">${f.detail}</span>
+                <ha-icon-button slot="meta" .label=${"Usuń poprawkę"} @click=${() => this._removePending(f)}>
+                  <ha-icon icon="mdi:close"></ha-icon>
+                </ha-icon-button>
+              </ha-list-item>`
+            )}
+          </ha-list>
+        </div>
+        <div slot="footer" class="dialog-footer">
+          <ha-button appearance="plain" @click=${this._discardPending}>Odrzuć wszystkie</ha-button>
+          <ha-button appearance="accent" @click=${this._downloadRewrite}>Pobierz poprawiony .omp</ha-button>
+        </div>
+      </ha-dialog>
+    `;
+  }
+
+  private _removePending(fix: PendingFix) {
+    this._pendingFixes = this._pendingFixes.filter(
+      (x) => !(x.target_entity === fix.target_entity && x.kind === fix.kind)
+    );
+    if (!this._pendingFixes.length) this._pendingOpen = false;
+  }
+
+  private _discardPending = () => {
+    this._pendingFixes = [];
+    this._pendingOpen = false;
+  };
+
+  private _downloadRewrite = async () => {
+    if (!this._lastOmp || !this._pendingFixes.length) return;
+    try {
+      const res = await this.hass.connection.sendMessagePromise<{
+        omp_base64: string;
+        applied: unknown[];
+        skipped: unknown[];
+      }>({
+        type: "grenton_objects/rewrite_omp",
+        omp_base64: this._lastOmp,
+        fixes: this._pendingFixes.map((f) => ({
+          target_entity: f.target_entity,
+          ...(f.new_service ? { new_service: f.new_service } : {}),
+          ...(f.new_entity ? { new_entity: f.new_entity } : {}),
+        })),
+      });
+      this._download(res.omp_base64, "ha_integration_poprawiony.omp");
+      const skipped = res.skipped?.length ? ` (pominięto ${res.skipped.length})` : "";
+      this._toast(`Pobrano poprawiony .omp — ${res.applied.length} zmian${skipped}. Zweryfikuj w Object Managerze.`);
+    } catch (e: any) {
+      this._toast(`Nie udało się przygotować pliku: ${e?.message || e?.code || "błąd"}`);
+    }
+  };
+
+  private _download(base64: string, filename: string) {
+    const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+    const url = URL.createObjectURL(new Blob([bytes], { type: "application/octet-stream" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
   }
 
   // ─── repair actions (HA-side) ──────────────────────────────────────────

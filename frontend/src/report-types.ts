@@ -27,6 +27,18 @@ export interface TypeSummaryEntry {
   supported: boolean;
 }
 
+export interface PushFix {
+  kind: "service" | "retarget";
+  target_entity: string;
+  device_type?: string;
+  current_service?: string;
+  suggested_service?: string;
+  valid_services?: string[];
+  new_entity?: string;
+  source_grenton_id?: string;
+  entity_grenton_id?: string;
+}
+
 export interface ScaffoldingCheck {
   name: string;
   desc: string;
@@ -51,6 +63,7 @@ export interface Report {
   push_object_mismatch: unknown[];
   poll_with_push: unknown[];
   push_orphan_targets: string[];
+  push_fixes: PushFix[];
   not_in_ha: unknown[];
   not_in_ha_by_type: [string, number][];
   unsupported_count: number;
