@@ -89,6 +89,7 @@ function allowedDeviceTypes(omType: string): string[] {
 const ADD_FIELD_LABELS: Record<string, string> = {
   name: "Nazwa encji",
   device_type: "Typ encji w HA",
+  grenton_type: "Typ Grenton",
   api_endpoint: "Adres bramki (API)",
   grenton_id: "Grenton ID",
   device_class: "Klasa urządzenia",
@@ -98,6 +99,40 @@ const ADD_FIELD_LABELS: Record<string, string> = {
 };
 
 const COVER_CLASSES = ["shutter", "blind", "curtain", "awning", "garage", "gate", "window", "door", "damper", "shade"];
+
+// Grenton object type options per HA device type (mirrors const.py's
+// *_GRENTON_TYPE_OPTIONS). cover/climate have no grenton_type.
+const GRENTON_TYPE_OPTIONS: Record<string, string[]> = {
+  light: ["DOUT", "DALI", "DIMMER", "LED", "RGB", "RGB+W", "LED_R", "LED_G", "LED_B", "LED_W", "LED_CHANNEL"],
+  switch: ["DOUT", "SATEL_OUTPUT", "SATEL_ZONE"],
+  binary_sensor: ["DIN", "SATEL_INPUT"],
+  sensor: [
+    "DEFAULT_SENSOR", "MODBUS_RTU", "MODBUS_VALUE", "MODBUS", "MODBUS_CLIENT",
+    "MODBUS_SERVER", "MODBUS_SLAVE_RTU", "RELAY_POWER", "ANALOG_SCALED_VALUE_OR_VALUE_%",
+  ],
+};
+
+// Best-effort Grenton object type for a new entity (mirrors report.py
+// _infer_grenton_type) — e.g. a DALI_GEAR object → DALI, not a plain DOUT.
+function inferGrentonType(deviceType: string, omType: string): string {
+  const t = omType || "";
+  if (deviceType === "binary_sensor") return t === "SatelInput" ? "SATEL_INPUT" : "DIN";
+  if (deviceType === "switch") {
+    if (t === "SatelZone") return "SATEL_ZONE";
+    if (t === "SatelOutput") return "SATEL_OUTPUT";
+    return "DOUT";
+  }
+  if (deviceType === "light") {
+    if (t.startsWith("DALI")) return "DALI";
+    if (t === "LEDRGB") return "RGB";
+    if (t === "LED_CHANNEL") return "LED_CHANNEL";
+    if (t.startsWith("LED")) return "LED";
+    if (t.toUpperCase().includes("DIM")) return "DIMMER";
+    return "DOUT";
+  }
+  if (deviceType === "sensor") return "DEFAULT_SENSOR";
+  return ""; // cover / climate: no grenton_type
+}
 
 interface StatusInfo {
   label: string;
@@ -870,6 +905,7 @@ export class GrentonObjectsPanel extends LitElement {
     this._addData = {
       name: row.name || row.grenton_id,
       device_type: deviceType,
+      grenton_type: inferGrentonType(deviceType, row.type),
       api_endpoint: this._defaultEndpoint(),
       grenton_id: row.grenton_id,
       auto_update: true,
@@ -890,6 +926,10 @@ export class GrentonObjectsPanel extends LitElement {
       { name: "name", required: true, selector: { text: {} } },
       { name: "device_type", required: true,
         selector: { select: { mode: "dropdown", options: allowed.map((d) => ({ value: d, label: DEVICE_TYPE_LABELS[d] })) } } },
+      ...(GRENTON_TYPE_OPTIONS[deviceType]
+        ? [{ name: "grenton_type", required: true,
+            selector: { select: { mode: "dropdown", options: GRENTON_TYPE_OPTIONS[deviceType].map((g) => ({ value: g, label: g })) } } }]
+        : []),
       { name: "api_endpoint", required: true, selector: { text: {} } },
       { name: "grenton_id", required: true, selector: { text: {} } },
     ];
@@ -939,9 +979,14 @@ export class GrentonObjectsPanel extends LitElement {
   }
 
   private _onAddFormChanged = (e: any) => {
+    const prev = this._addData;
     const v = { ...e.detail.value };
-    // Give cover a sensible default class when the user switches to it.
-    if (v.device_type === "cover" && !v.device_class) v.device_class = "shutter";
+    // When the entity type changes, re-derive the type-specific defaults so the
+    // proposal stays sensible (e.g. grenton_type valid for the new type).
+    if (v.device_type !== prev.device_type) {
+      v.grenton_type = inferGrentonType(v.device_type, this._addRow?.type || "");
+      if (v.device_type === "cover" && !v.device_class) v.device_class = "shutter";
+    }
     this._addData = v;
   };
 
@@ -963,6 +1008,7 @@ export class GrentonObjectsPanel extends LitElement {
         api_endpoint: d.api_endpoint || undefined,
         auto_update: d.auto_update !== false,
         update_interval: Number(d.update_interval) || 30,
+        ...(d.grenton_type ? { grenton_type: d.grenton_type } : {}),
         ...(d.device_class ? { device_class: d.device_class } : {}),
         ...(d.device_type === "switch" || d.device_type === "cover" ? { reversed: !!d.reversed } : {}),
       });
