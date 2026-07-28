@@ -19,11 +19,34 @@ import type { HomeAssistant, MergedRow, PushFix, Report, TypeSummaryEntry } from
 // pending list; new_service/new_entity are the actual edit sent to the backend.
 interface PendingFix {
   target_entity: string;
-  kind: "service" | "retarget";
+  kind: "service" | "retarget" | "inject";
   title: string;
   detail: string;
   new_service?: string;
   new_entity?: string;
+  inject?: {
+    obj_id: string;
+    om_name: string;
+    clu_ref: string;
+    entity: string;
+    device_type: string | null;
+    grenton_type: string | null;
+    om_type: string | null;
+  };
+}
+
+// OM types we can auto-inject a push event for (verified single-source, plus
+// roller). RGB/RGB+W are excluded — no verified template (source goes into
+// string_value). Mirrors rewrite.py::_PUSH_EVENT_BY_OM_TYPE / push_recipe.
+const PUSH_INJECTABLE = new Set([
+  "DALI_GEAR", "DALI_GEAR_DT8", "ROLLER_SHUTTER", "DIN", "SatelInput",
+  "SatelOutput", "SatelZone", "DOUT", "LED_CHANNEL", "ONEW_SENSOR",
+  "ANALOG_OUT", "ANALOG_IN",
+]);
+
+function pushInjectable(omType: string | null): boolean {
+  const t = omType || "";
+  return PUSH_INJECTABLE.has(t) || (t.startsWith("DALI") && !t.includes("MASTER"));
 }
 
 const DOMAIN = "grenton_objects";
@@ -169,6 +192,8 @@ function statusInfo(row: MergedRow): StatusInfo {
 interface ViewRow {
   id: string;
   name: string;
+  om_name: string;
+  grenton_type: string;
   grenton_id: string;
   clu: string;
   module: string;
@@ -548,6 +573,8 @@ export class GrentonObjectsPanel extends LitElement {
       return {
         id: r.grenton_id || r.entity_id || String(i),
         name: r.om_name || r.ha_name || "",
+        om_name: r.om_name || "",
+        grenton_type: r.grenton_type || "",
         grenton_id: r.grenton_id || "",
         clu,
         module: r.module || "—",
@@ -651,7 +678,7 @@ export class GrentonObjectsPanel extends LitElement {
       case "push_no_event":
         return { sections: [
           { h: "Co jest nie tak", body: "Encja jest w trybie push, ale w projekcie nie ma dla niej żadnego zdarzenia push (HA_Integration_Queue_Prepare)." },
-          { h: "Jak poprawić", body: "Dodaj w OM zdarzenie OnChange z wywołaniem HA_Integration_Queue_Prepare dla tej encji, albo w HA włącz automatyczne odświeżanie (polling)." },
+          { h: "Jak poprawić", body: "Wygeneruj zdarzenie push do .omp poniżej (do zweryfikowania w OM) albo w HA włącz automatyczne odświeżanie (polling)." },
         ] };
       case "poll_redundant":
         return { sections: [
@@ -695,6 +722,9 @@ export class GrentonObjectsPanel extends LitElement {
             : nothing}
           ${(row.flag === "push_bad_service" || row.flag === "push_wrong_object") && this._pushFixFor(row)
             ? this._pushFixAction(row, this._pushFixFor(row)!)
+            : nothing}
+          ${row.flag === "push_no_event" && row.entity_id
+            ? this._injectAction(row)
             : nothing}
         </div>
         <div slot="footer" class="dialog-footer">
@@ -776,6 +806,46 @@ export class GrentonObjectsPanel extends LitElement {
     });
   }
 
+  private _injectAction(row: ViewRow): TemplateResult {
+    if (!pushInjectable(row.type)) {
+      return html`
+        <div class="issue-action">
+          Automatyczne wygenerowanie zdarzenia push dla typu „${row.type}" nie jest jeszcze wspierane —
+          skonfiguruj push w OM ręcznie.
+        </div>
+      `;
+    }
+    return html`
+      <div class="issue-action">
+        <div class="issue-h">Proponowana poprawka w .omp</div>
+        <div>Wygeneruje zdarzenie push (Grenton→HA) w obiekcie <b>${row.grenton_id}</b>, kierujące stan na <b>${row.entity_id}</b>.</div>
+        <ha-button appearance="accent" size="small" @click=${() => this._stageInject(row)} style="margin-top:6px">
+          Dodaj zdarzenie push do .omp
+        </ha-button>
+      </div>
+    `;
+  }
+
+  private _stageInject(row: ViewRow) {
+    const objId = row.grenton_id.includes("->") ? row.grenton_id.split("->")[1] : row.grenton_id;
+    const cluSerial = row.clu && row.clu !== "—" ? row.clu : row.grenton_id.split("->")[0];
+    this._stageFix({
+      target_entity: row.entity_id,
+      kind: "inject",
+      title: `Zdarzenie push — ${row.entity_id}`,
+      detail: `nowe zdarzenie w obiekcie ${row.grenton_id} → push do ${row.entity_id}`,
+      inject: {
+        obj_id: objId,
+        om_name: row.om_name,
+        clu_ref: `${cluSerial}_clu`,
+        entity: row.entity_id,
+        device_type: row.domain !== "—" ? row.domain : null,
+        grenton_type: row.grenton_type || null,
+        om_type: row.type,
+      },
+    });
+  }
+
   private _stageFix(fix: PendingFix) {
     const rest = this._pendingFixes.filter(
       (x) => !(x.target_entity === fix.target_entity && x.kind === fix.kind)
@@ -844,6 +914,16 @@ export class GrentonObjectsPanel extends LitElement {
   private _downloadRewrite = async () => {
     if (!this._lastOmp || !this._pendingFixes.length) return;
     try {
+      const fixes = this._pendingFixes
+        .filter((f) => f.kind === "service" || f.kind === "retarget")
+        .map((f) => ({
+          target_entity: f.target_entity,
+          ...(f.new_service ? { new_service: f.new_service } : {}),
+          ...(f.new_entity ? { new_entity: f.new_entity } : {}),
+        }));
+      const injections = this._pendingFixes
+        .filter((f) => f.kind === "inject" && f.inject)
+        .map((f) => f.inject!);
       const res = await this.hass.connection.sendMessagePromise<{
         omp_base64: string;
         applied: unknown[];
@@ -851,11 +931,8 @@ export class GrentonObjectsPanel extends LitElement {
       }>({
         type: "grenton_objects/rewrite_omp",
         omp_base64: this._lastOmp,
-        fixes: this._pendingFixes.map((f) => ({
-          target_entity: f.target_entity,
-          ...(f.new_service ? { new_service: f.new_service } : {}),
-          ...(f.new_entity ? { new_entity: f.new_entity } : {}),
-        })),
+        fixes,
+        injections,
       });
       this._download(res.omp_base64, "ha_integration_poprawiony.omp");
       const skipped = res.skipped?.length ? ` (pominięto ${res.skipped.length})` : "";
@@ -908,6 +985,7 @@ export class GrentonObjectsPanel extends LitElement {
       grenton_type: inferGrentonType(deviceType, row.type),
       api_endpoint: this._defaultEndpoint(),
       grenton_id: row.grenton_id,
+      push_support: false,
       auto_update: true,
       update_interval: 30,
       reversed: false,
@@ -1066,7 +1144,7 @@ export class GrentonObjectsPanel extends LitElement {
     return merged.map((r): ViewRow => {
       const st = statusInfo(r);
       return {
-        id: "", name: "", grenton_id: "", clu: "", module: "", type: r.om_type || r.device_type || "—",
+        id: "", name: "", om_name: "", grenton_type: "", grenton_id: "", clu: "", module: "", type: r.om_type || r.device_type || "—",
         entity_id: "", entry_id: "", domain: "", update: "",
         updateCat: r.in_ha ? (r.mode ?? "brak") : "brak",
         status: st.label, sev: st.sev, statusCat: st.cat, flag: "",

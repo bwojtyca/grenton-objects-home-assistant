@@ -248,11 +248,22 @@ async def ws_add_object(hass, connection, msg) -> None:
     {
         vol.Required("type"): "grenton_objects/rewrite_omp",
         vol.Required("omp_base64"): str,
-        vol.Required("fixes"): [
+        vol.Optional("fixes", default=[]): [
             {
                 vol.Required("target_entity"): str,
                 vol.Optional("new_service"): str,
                 vol.Optional("new_entity"): str,
+            }
+        ],
+        vol.Optional("injections", default=[]): [
+            {
+                vol.Required("obj_id"): str,
+                vol.Required("om_name"): str,
+                vol.Required("clu_ref"): str,
+                vol.Required("entity"): str,
+                vol.Optional("device_type"): vol.Any(str, None),
+                vol.Optional("grenton_type"): vol.Any(str, None),
+                vol.Optional("om_type"): vol.Any(str, None),
             }
         ],
     }
@@ -260,19 +271,32 @@ async def ws_add_object(hass, connection, msg) -> None:
 @websocket_api.require_admin
 @websocket_api.async_response
 async def ws_rewrite_project(hass, connection, msg) -> None:
-    """Repair action (Grenton-side): apply the selected push-binding fixes to an
-    uploaded .omp and return a corrected copy (base64) to download. The user's
-    original file is never modified; edits are minimal, single-argument swaps
-    (see rewrite.py) and must be verified in Object Manager before use."""
+    """Repair action (Grenton-side): apply the selected push-binding fixes and/or
+    new push-event injections to an uploaded .omp and return a corrected copy
+    (base64) to download. The user's original file is never modified; edits are
+    minimal (single-argument swaps, or filling an object's empty event command),
+    and must be verified in Object Manager before use."""
+
+    def _rewrite(data: bytes) -> dict:
+        fixes_result = rewrite.apply_push_fixes(data, msg["fixes"])
+        inject_result = rewrite.inject_push_events(fixes_result["omp"], msg["injections"])
+        return {
+            "omp": inject_result["omp"],
+            "fixes_applied": fixes_result["applied"],
+            "fixes_skipped": fixes_result["skipped"],
+            "inject_applied": inject_result["applied"],
+            "inject_skipped": inject_result["skipped"],
+        }
+
     try:
         data = base64.b64decode(msg["omp_base64"])
-        result = await hass.async_add_executor_job(rewrite.apply_push_fixes, data, msg["fixes"])
+        result = await hass.async_add_executor_job(_rewrite, data)
     except Exception as err:  # noqa: BLE001 - surface any rewrite failure to the panel
         _LOGGER.warning("Grenton project rewrite failed: %s", err)
         connection.send_error(msg["id"], "rewrite_failed", str(err))
         return
     connection.send_result(msg["id"], {
         "omp_base64": base64.b64encode(result["omp"]).decode("ascii"),
-        "applied": result["applied"],
-        "skipped": result["skipped"],
+        "applied": result["fixes_applied"] + result["inject_applied"],
+        "skipped": result["fixes_skipped"] + result["inject_skipped"],
     })

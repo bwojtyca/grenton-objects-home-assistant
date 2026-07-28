@@ -121,3 +121,102 @@ def test_missing_system_xml_raises():
         archive.writestr("properties.xml", "<x/>")
     with pytest.raises(ValueError):
         rewrite.apply_push_fixes(buffer.getvalue(), [])
+
+
+# ─── push event injection ──────────────────────────────────────────────────
+
+# A DALI object with an empty OnDAPCValueChange event, plus an existing push on
+# another object (so a queue host CLU..._http can be discovered).
+INJECT_XML = (
+    '<object-stream>'
+    '<Output id="1"><name>Swiatlo_kuchnia___x1_DALI_GEAR_DT8_01</name>'
+    '<nameOnCLU>DAL6836</nameOnCLU>'
+    '<events id="2"><Event id="3"><name>OnDAPCValueChange</name>'
+    '<argList class="linked-list" id="4"/>'
+    '<commands class="linked-list" id="5"/>'
+    '<customSchemeCommands class="linked-list" id="6"/></Event></events></Output>'
+    '<Output id="7"><nameOnCLU>DOU9</nameOnCLU>'
+    '<events id="8"><Event id="9"><name>OnValueChange</name>'
+    '<commands class="linked-list" id="10">'
+    '<string>CLU521002483_http-&gt;HA_Integration_Queue_Prepare(&quot;light.x&quot;,&quot;set_state&quot;,'
+    'CLU221011038_clu-&gt;Foo-&gt;Value,nil,nil,nil)</string>'
+    '</commands></Event></events></Output>'
+    '</object-stream>'
+)
+
+
+def _make_inject_omp():
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("properties.xml", "<x/>")
+        archive.writestr("system.xml", INJECT_XML)
+    return buffer.getvalue()
+
+
+def _spec(**over):
+    base = {
+        "obj_id": "DAL6836",
+        "om_name": "Swiatlo_kuchnia___x1_DALI_GEAR_DT8_01",
+        "clu_ref": "CLU221011038_clu",
+        "entity": "light.swiatlo_kuchnia",
+        "device_type": "light",
+        "grenton_type": "DALI",
+        "om_type": "DALI_GEAR_DT8",
+    }
+    base.update(over)
+    return base
+
+
+def test_inject_fills_empty_dali_event():
+    result = rewrite.inject_push_events(_make_inject_omp(), [_spec()])
+    assert len(result["applied"]) == 1
+    assert result["skipped"] == []
+    a = result["applied"][0]
+    assert a["event"] == "OnDAPCValueChange" and a["service"] == "set_brightness"
+    text = _system_xml_of(result["omp"])
+    assert '<commands class="linked-list" id="5"/>' not in text  # empty node filled
+    assert ("CLU521002483_http-&gt;HA_Integration_Queue_Prepare(&quot;light.swiatlo_kuchnia&quot;,"
+            "&quot;set_brightness&quot;,CLU221011038_clu-&gt;Swiatlo_kuchnia___x1_DALI_GEAR_DT8_01-&gt;"
+            "DAPCValue,nil,nil,nil)") in text
+
+
+def test_inject_uses_discovered_queue_host():
+    # The command's host prefix is read from the existing push, not hardcoded.
+    result = rewrite.inject_push_events(_make_inject_omp(), [_spec()])
+    assert result["applied"][0]["command"].startswith("CLU521002483_http->HA_Integration_Queue_Prepare(")
+
+
+def test_inject_skips_unknown_object():
+    result = rewrite.inject_push_events(_make_inject_omp(), [_spec(obj_id="NOPE")])
+    assert result["applied"] == []
+    assert result["skipped"] == [{"obj_id": "NOPE", "reason": "event_not_found"}]
+
+
+def test_inject_skips_unsupported_type():
+    result = rewrite.inject_push_events(_make_inject_omp(), [_spec(om_type="RGB", grenton_type="RGB")])
+    assert result["applied"] == []
+    assert result["skipped"][0]["reason"] == "unsupported_type"
+
+
+def test_inject_does_not_overwrite_wired_event():
+    # DOU9 already has a command → must be skipped, not clobbered.
+    spec = _spec(obj_id="DOU9", om_name="Foo", entity="light.y", device_type="switch",
+                 grenton_type="DOUT", om_type="DOUT")
+    result = rewrite.inject_push_events(_make_inject_omp(), [spec])
+    assert result["applied"] == []
+    assert result["skipped"][0]["reason"] == "not_empty_or_ambiguous"
+
+
+def test_inject_cover_is_multi_source():
+    xml = INJECT_XML.replace("OnDAPCValueChange", "OnStateChange")
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("system.xml", xml)
+    spec = _spec(device_type="cover", grenton_type=None, om_type="ROLLER_SHUTTER")
+    result = rewrite.inject_push_events(buffer.getvalue(), [spec])
+    assert len(result["applied"]) == 1
+    cmd = result["applied"][0]["command"]
+    assert '"set_cover"' in cmd
+    # three sources (State/Position/LamelPosition) then a single trailing nil.
+    assert "->State,CLU221011038_clu->" in cmd and "->Position,CLU221011038_clu->" in cmd
+    assert cmd.endswith("->LamelPosition,nil)")

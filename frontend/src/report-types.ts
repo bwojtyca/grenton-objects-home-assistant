@@ -15,6 +15,7 @@ export interface MergedRow {
   entry_id: string | null;
   ha_name: string | null;
   device_type: string | null;
+  grenton_type: string | null;
   mode: "polling" | "push" | null;
   interval: number | null;
   area: string | null;
