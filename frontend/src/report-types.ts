@@ -37,7 +37,8 @@ export interface PushFix {
   valid_services?: string[];
   new_entity?: string;
   source_grenton_id?: string;
-  entity_grenton_id?: string;
+  entity_grenton_id?: string | null;
+  orphan?: boolean;
 }
 
 export interface ScaffoldingCheck {
@@ -68,14 +69,23 @@ export interface Report {
   not_in_ha: unknown[];
   not_in_ha_by_type: [string, number][];
   unsupported_count: number;
-  scaffolding: { checks: ScaffoldingCheck[]; missing: ScaffoldingCheck[]; push_used: boolean } | null;
+  scaffolding: {
+    checks: ScaffoldingCheck[];
+    missing: ScaffoldingCheck[];
+    push_used: boolean;
+  } | null;
   type_summary: TypeSummaryEntry[];
   merged: MergedRow[];
 }
 
 /** Minimal shape of the `hass` object we use. */
 export interface HomeAssistant {
-  states: Record<string, { entity_id: string; state: string; attributes: Record<string, any> }>;
-  connection: { sendMessagePromise: <T>(msg: Record<string, unknown>) => Promise<T> };
+  states: Record<
+    string,
+    { entity_id: string; state: string; attributes: Record<string, any> }
+  >;
+  connection: {
+    sendMessagePromise: <T>(msg: Record<string, unknown>) => Promise<T>;
+  };
   [key: string]: any;
 }

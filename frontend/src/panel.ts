@@ -9,10 +9,23 @@
  *
  * Repository: https://github.com/bwojtyca/grenton-objects-home-assistant
  */
-import { LitElement, html, css, nothing, type PropertyValues, type TemplateResult } from "lit";
+import {
+  LitElement,
+  html,
+  css,
+  nothing,
+  type PropertyValues,
+  type TemplateResult,
+} from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { stateColorCss } from "./state-color";
-import type { HomeAssistant, MergedRow, PushFix, Report, TypeSummaryEntry } from "./report-types";
+import type {
+  HomeAssistant,
+  MergedRow,
+  PushFix,
+  Report,
+  TypeSummaryEntry,
+} from "./report-types";
 
 // A push-binding fix staged for the .omp download (accumulated, then applied in
 // one corrected file). `title`/`detail` are the human description shown in the
@@ -39,14 +52,25 @@ interface PendingFix {
 // roller). RGB/RGB+W are excluded — no verified template (source goes into
 // string_value). Mirrors rewrite.py::_PUSH_EVENT_BY_OM_TYPE / push_recipe.
 const PUSH_INJECTABLE = new Set([
-  "DALI_GEAR", "DALI_GEAR_DT8", "ROLLER_SHUTTER", "DIN", "SatelInput",
-  "SatelOutput", "SatelZone", "DOUT", "LED_CHANNEL", "ONEW_SENSOR",
-  "ANALOG_OUT", "ANALOG_IN",
+  "DALI_GEAR",
+  "DALI_GEAR_DT8",
+  "ROLLER_SHUTTER",
+  "DIN",
+  "SatelInput",
+  "SatelOutput",
+  "SatelZone",
+  "DOUT",
+  "LED_CHANNEL",
+  "ONEW_SENSOR",
+  "ANALOG_OUT",
+  "ANALOG_IN",
 ]);
 
 function pushInjectable(omType: string | null): boolean {
   const t = omType || "";
-  return PUSH_INJECTABLE.has(t) || (t.startsWith("DALI") && !t.includes("MASTER"));
+  return (
+    PUSH_INJECTABLE.has(t) || (t.startsWith("DALI") && !t.includes("MASTER"))
+  );
 }
 
 const DOMAIN = "grenton_objects";
@@ -84,7 +108,14 @@ const DEVICE_TYPE_LABELS: Record<string, string> = {
 };
 
 // Fallback for unknown OM types — offer everything, guess switch first.
-const ALL_DEVICE_TYPES = ["switch", "light", "cover", "climate", "sensor", "binary_sensor"];
+const ALL_DEVICE_TYPES = [
+  "switch",
+  "light",
+  "cover",
+  "climate",
+  "sensor",
+  "binary_sensor",
+];
 
 // Which HA entity types make sense for a given Grenton object type. First entry
 // is the default. A DIN input can only be a binary_sensor — never a climate.
@@ -121,17 +152,47 @@ const ADD_FIELD_LABELS: Record<string, string> = {
   update_interval: "Częstotliwość odświeżania (s)",
 };
 
-const COVER_CLASSES = ["shutter", "blind", "curtain", "awning", "garage", "gate", "window", "door", "damper", "shade"];
+const COVER_CLASSES = [
+  "shutter",
+  "blind",
+  "curtain",
+  "awning",
+  "garage",
+  "gate",
+  "window",
+  "door",
+  "damper",
+  "shade",
+];
 
 // Grenton object type options per HA device type (mirrors const.py's
 // *_GRENTON_TYPE_OPTIONS). cover/climate have no grenton_type.
 const GRENTON_TYPE_OPTIONS: Record<string, string[]> = {
-  light: ["DOUT", "DALI", "DIMMER", "LED", "RGB", "RGB+W", "LED_R", "LED_G", "LED_B", "LED_W", "LED_CHANNEL"],
+  light: [
+    "DOUT",
+    "DALI",
+    "DIMMER",
+    "LED",
+    "RGB",
+    "RGB+W",
+    "LED_R",
+    "LED_G",
+    "LED_B",
+    "LED_W",
+    "LED_CHANNEL",
+  ],
   switch: ["DOUT", "SATEL_OUTPUT", "SATEL_ZONE"],
   binary_sensor: ["DIN", "SATEL_INPUT"],
   sensor: [
-    "DEFAULT_SENSOR", "MODBUS_RTU", "MODBUS_VALUE", "MODBUS", "MODBUS_CLIENT",
-    "MODBUS_SERVER", "MODBUS_SLAVE_RTU", "RELAY_POWER", "ANALOG_SCALED_VALUE_OR_VALUE_%",
+    "DEFAULT_SENSOR",
+    "MODBUS_RTU",
+    "MODBUS_VALUE",
+    "MODBUS",
+    "MODBUS_CLIENT",
+    "MODBUS_SERVER",
+    "MODBUS_SLAVE_RTU",
+    "RELAY_POWER",
+    "ANALOG_SCALED_VALUE_OR_VALUE_%",
   ],
 };
 
@@ -139,7 +200,8 @@ const GRENTON_TYPE_OPTIONS: Record<string, string[]> = {
 // _infer_grenton_type) — e.g. a DALI_GEAR object → DALI, not a plain DOUT.
 function inferGrentonType(deviceType: string, omType: string): string {
   const t = omType || "";
-  if (deviceType === "binary_sensor") return t === "SatelInput" ? "SATEL_INPUT" : "DIN";
+  if (deviceType === "binary_sensor")
+    return t === "SatelInput" ? "SATEL_INPUT" : "DIN";
   if (deviceType === "switch") {
     if (t === "SatelZone") return "SATEL_ZONE";
     if (t === "SatelOutput") return "SATEL_OUTPUT";
@@ -167,26 +229,54 @@ interface StatusInfo {
 function statusInfo(row: MergedRow): StatusInfo {
   const f = row.flags;
   if (f.includes("orphan"))
-    return { label: "Błąd: brak w projekcie", sev: "error", cat: "problem",
-      hint: "Encja HA wskazuje grenton_id, którego nie ma w projekcie OM. Obiekt usunięto/zmieniono w OM albo encja ma zły grenton_id — popraw jedno z nich." };
+    return {
+      label: "Błąd: brak w projekcie",
+      sev: "error",
+      cat: "problem",
+      hint: "Encja HA wskazuje grenton_id, którego nie ma w projekcie OM. Obiekt usunięto/zmieniono w OM albo encja ma zły grenton_id — popraw jedno z nich.",
+    };
   if (f.includes("push_wrong_object"))
-    return { label: "Błąd: push ze złego obiektu", sev: "error", cat: "problem",
-      hint: "Zdarzenie push aktualizuje tę encję stanem INNEGO obiektu Grentona niż jej grenton_id. Popraw źródło w zdarzeniu (OnChange) obiektu w OM." };
+    return {
+      label: "Błąd: push ze złego obiektu",
+      sev: "error",
+      cat: "problem",
+      hint: "Zdarzenie push aktualizuje tę encję stanem INNEGO obiektu Grentona niż jej grenton_id. Popraw źródło w zdarzeniu (OnChange) obiektu w OM.",
+    };
   if (f.includes("push_bad_service"))
-    return { label: "Błąd: zła akcja push", sev: "error", cat: "problem",
-      hint: "Akcja push nie pasuje do typu encji. Użyj: light→set_state/set_brightness/set_rgb, switch/binary_sensor→set_state, cover→set_cover, sensor→set_value." };
+    return {
+      label: "Błąd: zła akcja push",
+      sev: "error",
+      cat: "problem",
+      hint: "Akcja push nie pasuje do typu encji. Użyj: light→set_state/set_brightness/set_rgb, switch/binary_sensor→set_state, cover→set_cover, sensor→set_value.",
+    };
   if (f.includes("push_no_event"))
-    return { label: "Błąd: push bez zdarzenia", sev: "error", cat: "problem",
-      hint: "Encja jest w trybie push, ale w projekcie nie ma dla niej zdarzenia HA_Integration_Queue_Prepare. Dodaj zdarzenie OnChange w OM albo włącz polling." };
+    return {
+      label: "Błąd: push bez zdarzenia",
+      sev: "error",
+      cat: "problem",
+      hint: "Encja jest w trybie push, ale w projekcie nie ma dla niej zdarzenia HA_Integration_Queue_Prepare. Dodaj zdarzenie OnChange w OM albo włącz polling.",
+    };
   if (f.includes("poll_redundant"))
-    return { label: "Uwaga: polling + push", sev: "warn", cat: "problem",
-      hint: "Encja jest pollowana i jednocześnie ma zdarzenie push — podwójna aktualizacja. Wyłącz auto-update albo usuń zdarzenie push w OM." };
+    return {
+      label: "Uwaga: polling + push",
+      sev: "warn",
+      cat: "problem",
+      hint: "Encja jest pollowana i jednocześnie ma zdarzenie push — podwójna aktualizacja. Wyłącz auto-update albo usuń zdarzenie push w OM.",
+    };
   if (row.in_ha) return { label: "OK", sev: "ok", cat: "ok" };
   if (row.is_unsupported)
-    return { label: "Nieobsługiwany w integracji", sev: "muted", cat: "unsupported",
-      hint: "Integracja nie potrafi wystawić tego typu obiektu Grentona (np. DALI_MASTER, kontener Satel)." };
-  return { label: "Brak w HA", sev: "missing", cat: "missing",
-    hint: "Obiekt istnieje w projekcie Grentona, ale nie jest dodany do HA. Dodaj go przez integrację, jeśli chcesz go używać." };
+    return {
+      label: "Nieobsługiwany w integracji",
+      sev: "muted",
+      cat: "unsupported",
+      hint: "Integracja nie potrafi wystawić tego typu obiektu Grentona (np. DALI_MASTER, kontener Satel).",
+    };
+  return {
+    label: "Brak w HA",
+    sev: "missing",
+    cat: "missing",
+    hint: "Obiekt istnieje w projekcie Grentona, ale nie jest dodany do HA. Dodaj go przez integrację, jeśli chcesz go używać.",
+  };
 }
 
 interface ViewRow {
@@ -209,7 +299,14 @@ interface ViewRow {
   flag: string;
 }
 
-const PROBLEM_FLAGS = ["orphan", "push_wrong_object", "push_bad_service", "push_no_event", "poll_redundant", "not_in_ha"];
+const PROBLEM_FLAGS = [
+  "orphan",
+  "push_wrong_object",
+  "push_bad_service",
+  "push_no_event",
+  "poll_redundant",
+  "not_in_ha",
+];
 
 const DOMAIN_SERVICES: Record<string, string> = {
   light: "set_state / set_brightness / set_rgb / set_rgbw",
@@ -225,7 +322,10 @@ function toBase64(buffer: ArrayBuffer): string {
   const chunk = 0x8000;
   let binary = "";
   for (let i = 0; i < bytes.length; i += chunk) {
-    binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + chunk)));
+    binary += String.fromCharCode.apply(
+      null,
+      Array.from(bytes.subarray(i, i + chunk)),
+    );
   }
   return btoa(binary);
 }
@@ -259,62 +359,193 @@ export class GrentonObjectsPanel extends LitElement {
   private _lastOmp?: string; // base64 of the uploaded .omp, kept to re-run analysis after a repair
 
   static styles = css`
-    :host { display: block; height: 100%; }
-    .pad { padding: 24px; box-sizing: border-box; max-width: 720px; margin: 0 auto; }
-    ha-file-upload { display: block; }
-    .intro { color: var(--secondary-text-color); margin: 0 0 16px; }
+    :host {
+      display: block;
+      height: 100%;
+    }
+    .pad {
+      padding: 24px;
+      box-sizing: border-box;
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    ha-file-upload {
+      display: block;
+    }
+    .intro {
+      color: var(--secondary-text-color);
+      margin: 0 0 16px;
+    }
     /* compact clickable stat strip in the page header area */
     .stat-bar {
-      display: flex; align-items: center; gap: 12px; width: 100%; box-sizing: border-box;
-      padding: 8px 16px; cursor: pointer; border: none; background: var(--secondary-background-color);
-      color: var(--primary-text-color); font: inherit; text-align: left;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      box-sizing: border-box;
+      padding: 8px 16px;
+      cursor: pointer;
+      border: none;
+      background: var(--secondary-background-color);
+      color: var(--primary-text-color);
+      font: inherit;
+      text-align: left;
       border-bottom: 1px solid var(--divider-color);
     }
-    .stat-bar .verdict { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
-    .stat-bar .verdict.issues { color: var(--warning-color); }
-    .stat-bar .verdict.ok { color: var(--success-color); }
-    .stat-bar .nums { color: var(--secondary-text-color); }
-    .stat-bar .more { margin-left: auto; color: var(--primary-color); }
-    /* summary dialog */
-    .summary h4 { margin: 16px 0 4px; }
-    .summary ul { margin: 0; padding-left: 18px; }
-    .summary dl.stats { display: grid; grid-template-columns: auto auto; gap: 2px 16px; margin: 0; }
-    .summary dl.stats dt { color: var(--secondary-text-color); }
-    .summary .problems li.active-error { font-weight: 600; }
-    /* table cells */
-    .filter-header { display: flex; align-items: center; gap: 8px; width: 100%; }
-    .badge {
-      background: var(--primary-color); color: var(--text-primary-color, #fff);
-      border-radius: 10px; min-width: 18px; height: 18px; padding: 0 5px; font-size: 0.75em;
-      display: inline-flex; align-items: center; justify-content: center;
+    .stat-bar .verdict {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 600;
     }
-    .filter-clear { margin-left: auto; color: var(--secondary-text-color); cursor: pointer; }
-    .entity { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
-    .entity ha-state-icon { flex: 0 0 auto; --mdc-icon-size: 22px; }
-    .status-cell { display: inline-block; cursor: pointer; }
-    .cog { cursor: pointer; color: var(--secondary-text-color); }
-    .issue { line-height: 1.5; max-width: 460px; }
-    .issue-sec { margin-bottom: 12px; }
-    .issue-h { font-weight: 600; margin-bottom: 2px; }
-    .issue-action { margin-top: 6px; }
-    .add-action { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-    .add-dialog { min-width: min(460px, 82vw); }
-    .add-dialog ha-form { display: block; }
-    .add-hint { color: var(--secondary-text-color); margin: 4px 0 12px; }
+    .stat-bar .verdict.issues {
+      color: var(--warning-color);
+    }
+    .stat-bar .verdict.ok {
+      color: var(--success-color);
+    }
+    .stat-bar .nums {
+      color: var(--secondary-text-color);
+    }
+    .stat-bar .more {
+      margin-left: auto;
+      color: var(--primary-color);
+    }
+    /* summary dialog */
+    .summary h4 {
+      margin: 16px 0 4px;
+    }
+    .summary ul {
+      margin: 0;
+      padding-left: 18px;
+    }
+    .summary dl.stats {
+      display: grid;
+      grid-template-columns: auto auto;
+      gap: 2px 16px;
+      margin: 0;
+    }
+    .summary dl.stats dt {
+      color: var(--secondary-text-color);
+    }
+    .summary .problems li.active-error {
+      font-weight: 600;
+    }
+    /* table cells */
+    .filter-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+    }
+    .badge {
+      background: var(--primary-color);
+      color: var(--text-primary-color, #fff);
+      border-radius: 10px;
+      min-width: 18px;
+      height: 18px;
+      padding: 0 5px;
+      font-size: 0.75em;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .filter-clear {
+      margin-left: auto;
+      color: var(--secondary-text-color);
+      cursor: pointer;
+    }
+    .entity {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+    }
+    .entity ha-state-icon {
+      flex: 0 0 auto;
+      --mdc-icon-size: 22px;
+    }
+    .status-cell {
+      display: inline-block;
+      cursor: pointer;
+    }
+    .cog {
+      cursor: pointer;
+      color: var(--secondary-text-color);
+    }
+    .issue {
+      line-height: 1.5;
+      max-width: 460px;
+    }
+    .issue-sec {
+      margin-bottom: 12px;
+    }
+    .issue-h {
+      font-weight: 600;
+      margin-bottom: 2px;
+    }
+    .issue-action {
+      margin-top: 6px;
+    }
+    .add-action {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .add-dialog {
+      min-width: min(460px, 82vw);
+    }
+    .add-dialog ha-form {
+      display: block;
+    }
+    .add-hint {
+      color: var(--secondary-text-color);
+      margin: 4px 0 12px;
+    }
     /* pending .omp changes bar (above the table) */
     .pending-bar {
-      display: flex; align-items: center; gap: 12px; width: 100%; box-sizing: border-box;
-      padding: 8px 16px; color: var(--primary-text-color);
-      background: color-mix(in srgb, var(--warning-color) 16%, var(--card-background-color));
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      box-sizing: border-box;
+      padding: 8px 16px;
+      color: var(--primary-text-color);
+      background: color-mix(
+        in srgb,
+        var(--warning-color) 16%,
+        var(--card-background-color)
+      );
       border-bottom: 1px solid var(--warning-color);
     }
-    .pending-bar > ha-icon { color: var(--warning-color); flex: 0 0 auto; }
-    .pending-info {
-      flex: 1; text-align: left; background: none; border: none; padding: 0;
-      color: inherit; font: inherit; cursor: pointer; text-decoration: underline dotted;
+    .pending-bar > ha-icon {
+      color: var(--warning-color);
+      flex: 0 0 auto;
     }
-    .pending ha-list { display: block; margin-top: 8px; }
-    .dialog-footer { display: flex; gap: var(--ha-space-3, 12px); justify-content: flex-end; align-items: center; flex-wrap: wrap; padding: 8px 24px 16px; }
+    .pending-info {
+      flex: 1;
+      text-align: left;
+      background: none;
+      border: none;
+      padding: 0;
+      color: inherit;
+      font: inherit;
+      cursor: pointer;
+      text-decoration: underline dotted;
+    }
+    .pending ha-list {
+      display: block;
+      margin-top: 8px;
+    }
+    .dialog-footer {
+      display: flex;
+      gap: var(--ha-space-3, 12px);
+      justify-content: flex-end;
+      align-items: center;
+      flex-wrap: wrap;
+      padding: 8px 24px 16px;
+    }
   `;
 
   protected shouldUpdate(changed: PropertyValues): boolean {
@@ -334,7 +565,9 @@ export class GrentonObjectsPanel extends LitElement {
     const w = window as any;
     if (!customElements.get("ha-data-table") && w.loadCardHelpers) {
       w.loadCardHelpers()
-        .then((h: any) => h?.createCardElement?.({ type: "entities", entities: [] }))
+        .then((h: any) =>
+          h?.createCardElement?.({ type: "entities", entities: [] }),
+        )
         .catch(() => {});
     }
   }
@@ -353,11 +586,18 @@ export class GrentonObjectsPanel extends LitElement {
     const content = html`
       <div class="pad">
         <p class="intro">
-          Wgraj plik projektu Object Managera (.omp). Zostanie porównany z aktualną
-          konfiguracją Home Assistant — nic nie jest zmieniane.
+          Wgraj plik projektu Object Managera (.omp). Zostanie porównany z
+          aktualną konfiguracją Home Assistant — nic nie jest zmieniane.
         </p>
         ${this._uploadUI()}
-        ${this._error ? html`<ha-alert alert-type="error" title="Błąd analizy" style="margin-top:16px">${this._error}</ha-alert>` : nothing}
+        ${this._error
+          ? html`<ha-alert
+              alert-type="error"
+              title="Błąd analizy"
+              style="margin-top:16px"
+              >${this._error}</ha-alert
+            >`
+          : nothing}
       </div>
     `;
     if (customElements.get("hass-tabs-subpage")) {
@@ -367,7 +607,8 @@ export class GrentonObjectsPanel extends LitElement {
         ?main-page=${true}
         .route=${this.route ?? { prefix: "", path: "" }}
         .tabs=${this._tabs}
-      >${content}</hass-tabs-subpage>`;
+        >${content}</hass-tabs-subpage
+      >`;
     }
     return content;
   }
@@ -386,8 +627,17 @@ export class GrentonObjectsPanel extends LitElement {
     }
     return html`
       <ha-button raised @click=${this._pickFile}>Wybierz plik .omp</ha-button>
-      <input type="file" accept=".omp,.zip" style="display:none" @change=${this._onFileInput} />
-      ${this._busy ? html`<div style="margin-top:12px;color:var(--secondary-text-color)">Analizuję… (${this._busyName})</div>` : nothing}
+      <input
+        type="file"
+        accept=".omp,.zip"
+        style="display:none"
+        @change=${this._onFileInput}
+      />
+      ${this._busy
+        ? html`<div style="margin-top:12px;color:var(--secondary-text-color)">
+            Analizuję… (${this._busyName})
+          </div>`
+        : nothing}
     `;
   }
 
@@ -423,10 +673,19 @@ export class GrentonObjectsPanel extends LitElement {
         @clear-filter=${this._resetFilters}
         .noDataText=${"Brak obiektów dla wybranych filtrów"}
       >
-        <ha-icon-button slot="toolbar-icon" .label=${"Wgraj inny plik .omp"} @click=${this._pickFile}>
+        <ha-icon-button
+          slot="toolbar-icon"
+          .label=${"Wgraj inny plik .omp"}
+          @click=${this._pickFile}
+        >
           <ha-icon icon="mdi:upload"></ha-icon>
         </ha-icon-button>
-        <input type="file" accept=".omp,.zip" style="display:none" @change=${this._onFileInput} />
+        <input
+          type="file"
+          accept=".omp,.zip"
+          style="display:none"
+          @change=${this._onFileInput}
+        />
         <div slot="top-header">${this._statStrip()}${this._pendingBar()}</div>
         ${this._filterGroups()}
       </hass-tabs-subpage-data-table>
@@ -452,17 +711,28 @@ export class GrentonObjectsPanel extends LitElement {
     const r = this._report!;
     const s = r.summary;
     const problemCount =
-      r.orphans.length + r.push_object_mismatch.length + r.push_service_mismatch.length +
-      r.push_no_event.length + r.push_orphan_targets.length + r.poll_with_push.length;
+      r.orphans.length +
+      r.push_object_mismatch.length +
+      r.push_service_mismatch.length +
+      r.push_no_event.length +
+      r.push_orphan_targets.length +
+      r.poll_with_push.length;
     const ok = r.verdict === "ok";
     return html`
-      <button class="stat-bar" @click=${() => (this._summaryOpen = true)} title="Pokaż pełne podsumowanie">
+      <button
+        class="stat-bar"
+        @click=${() => (this._summaryOpen = true)}
+        title="Pokaż pełne podsumowanie"
+      >
         <span class="verdict ${ok ? "ok" : "issues"}">
           <ha-icon icon=${ok ? "mdi:check-circle" : "mdi:alert"}></ha-icon>
-          ${ok ? "Spójne z projektem" : `Rozbieżności — ${problemCount} do sprawdzenia`}
+          ${ok
+            ? "Spójne z projektem"
+            : `Rozbieżności — ${problemCount} do sprawdzenia`}
         </span>
         <span class="nums">
-          ${s.ha_total}/${s.om_total} obiektów w HA · ${s.push} push / ${s.polling} polling
+          ${s.ha_total}/${s.om_total} obiektów w HA · ${s.push} push /
+          ${s.polling} polling
         </span>
         <span class="more">Szczegóły →</span>
       </button>
@@ -490,13 +760,41 @@ export class GrentonObjectsPanel extends LitElement {
     const s = r.summary;
     const ok = r.verdict === "ok";
     const problems = [
-      { label: "encje HA bez obiektu w projekcie", count: r.orphans.length, sev: "error" },
-      { label: "push aktualizujący zły obiekt Grentona", count: r.push_object_mismatch.length, sev: "error" },
-      { label: "push z niewłaściwą akcją dla typu encji", count: r.push_service_mismatch.length, sev: "error" },
-      { label: "encje push bez zdarzenia w Grentonie", count: r.push_no_event.length, sev: "error" },
-      { label: "zdarzenia push w nieistniejącą encję", count: r.push_orphan_targets.length, sev: "error" },
-      { label: "polling z jednoczesnym push (redundancja)", count: r.poll_with_push.length, sev: "warn" },
-      { label: "obiekty Grentona nieobecne w HA", count: r.not_in_ha.length, sev: "missing" },
+      {
+        label: "encje HA bez obiektu w projekcie",
+        count: r.orphans.length,
+        sev: "error",
+      },
+      {
+        label: "push aktualizujący zły obiekt Grentona",
+        count: r.push_object_mismatch.length,
+        sev: "error",
+      },
+      {
+        label: "push z niewłaściwą akcją dla typu encji",
+        count: r.push_service_mismatch.length,
+        sev: "error",
+      },
+      {
+        label: "encje push bez zdarzenia w Grentonie",
+        count: r.push_no_event.length,
+        sev: "error",
+      },
+      {
+        label: "zdarzenia push w nieistniejącą encję",
+        count: r.push_orphan_targets.length,
+        sev: "error",
+      },
+      {
+        label: "polling z jednoczesnym push (redundancja)",
+        count: r.poll_with_push.length,
+        sev: "warn",
+      },
+      {
+        label: "obiekty Grentona nieobecne w HA",
+        count: r.not_in_ha.length,
+        sev: "missing",
+      },
     ].filter((p) => p.count > 0);
     return html`
       <div class="summary">
@@ -506,25 +804,43 @@ export class GrentonObjectsPanel extends LitElement {
 
         <h4>Statystyki</h4>
         <dl class="stats">
-          <dt>Obiekty projektu</dt><dd><b>${s.om_total}</b></dd>
-          <dt>Encje w HA</dt><dd><b>${s.ha_total}</b></dd>
-          <dt>Zdarzenia push (Grenton→HA)</dt><dd><b>${s.push_events}</b></dd>
-          <dt>Tryb aktualizacji</dt><dd>${s.push} push · ${s.polling} polling</dd>
+          <dt>Obiekty projektu</dt>
+          <dd><b>${s.om_total}</b></dd>
+          <dt>Encje w HA</dt>
+          <dd><b>${s.ha_total}</b></dd>
+          <dt>Zdarzenia push (Grenton→HA)</dt>
+          <dd><b>${s.push_events}</b></dd>
+          <dt>Tryb aktualizacji</dt>
+          <dd>${s.push} push · ${s.polling} polling</dd>
         </dl>
 
         <h4>Wg domeny</h4>
         <ul>
           ${Object.keys(s.per_domain)
-            .sort((a, b) => s.per_domain[b].push + s.per_domain[b].polling - (s.per_domain[a].push + s.per_domain[a].polling))
-            .map((d) => html`<li>${d}: ${s.per_domain[d].push} push / ${s.per_domain[d].polling} polling</li>`)}
+            .sort(
+              (a, b) =>
+                s.per_domain[b].push +
+                s.per_domain[b].polling -
+                (s.per_domain[a].push + s.per_domain[a].polling),
+            )
+            .map(
+              (d) =>
+                html`<li>
+                  ${d}: ${s.per_domain[d].push} push /
+                  ${s.per_domain[d].polling} polling
+                </li>`,
+            )}
         </ul>
 
         <h4>Problemy${problems.length ? "" : " — brak"}</h4>
         ${problems.length
           ? html`<ul class="problems">
               ${problems.map((p) => {
-                const cls = p.sev === "error" || p.sev === "warn" ? "active-error" : "";
-                return html`<li class=${cls} style=${`color:${SEV_HEX[p.sev]}`}>${p.count} ${p.label}</li>`;
+                const cls =
+                  p.sev === "error" || p.sev === "warn" ? "active-error" : "";
+                return html`<li class=${cls} style=${`color:${SEV_HEX[p.sev]}`}>
+                  ${p.count} ${p.label}
+                </li>`;
               })}
             </ul>`
           : nothing}
@@ -534,7 +850,6 @@ export class GrentonObjectsPanel extends LitElement {
               (${r.not_in_ha_by_type.map(([t, c]) => `${c}× ${t}`).join(", ")})
             </div>`
           : nothing}
-
         ${r.scaffolding ? this._scaffold(r.scaffolding) : nothing}
       </div>
     `;
@@ -544,17 +859,26 @@ export class GrentonObjectsPanel extends LitElement {
     return html`
       <h4>Konfiguracja po stronie Grentona</h4>
       ${!sc.push_used
-        ? html`<div style="color:var(--secondary-text-color);font-size:0.9em">Push nieużywany — obiekty kolejki nie są wymagane.</div>`
+        ? html`<div style="color:var(--secondary-text-color);font-size:0.9em">
+            Push nieużywany — obiekty kolejki nie są wymagane.
+          </div>`
         : nothing}
       <ul>
         ${sc.checks.map((c) => {
           let color = SEV_HEX.ok;
           let mark = "obecny";
           if (!c.present) {
-            if (c.required) { color = SEV_HEX.error; mark = "BRAK (wymagane)"; }
-            else { color = SEV_HEX.muted; mark = "brak (opcjonalne)"; }
+            if (c.required) {
+              color = SEV_HEX.error;
+              mark = "BRAK (wymagane)";
+            } else {
+              color = SEV_HEX.muted;
+              mark = "brak (opcjonalne)";
+            }
           }
-          return html`<li style=${`color:${color}`}>${c.name} — ${c.desc}: ${mark}</li>`;
+          return html`<li style=${`color:${color}`}>
+            ${c.name} — ${c.desc}: ${mark}
+          </li>`;
         })}
       </ul>
     `;
@@ -567,9 +891,18 @@ export class GrentonObjectsPanel extends LitElement {
     const rows = merged.map((r, i): ViewRow => {
       const st = statusInfo(r);
       const updateCat = r.in_ha ? (r.mode ?? "brak") : "brak";
-      const update = !r.in_ha ? "brak" : r.mode === "polling" ? `polling (${r.interval ?? "?"} s)` : "push";
-      const clu = r.clu || (r.grenton_id?.includes("->") ? r.grenton_id.split("->")[0] : "") || "—";
-      const flag = r.flags.find((f) => PROBLEM_FLAGS.includes(f)) ?? (r.is_unsupported ? "unsupported" : r.in_ha ? "ok" : "not_in_ha");
+      const update = !r.in_ha
+        ? "brak"
+        : r.mode === "polling"
+          ? `polling (${r.interval ?? "?"} s)`
+          : "push";
+      const clu =
+        r.clu ||
+        (r.grenton_id?.includes("->") ? r.grenton_id.split("->")[0] : "") ||
+        "—";
+      const flag =
+        r.flags.find((f) => PROBLEM_FLAGS.includes(f)) ??
+        (r.is_unsupported ? "unsupported" : r.in_ha ? "ok" : "not_in_ha");
       return {
         id: r.grenton_id || r.entity_id || String(i),
         name: r.om_name || r.ha_name || "",
@@ -600,101 +933,256 @@ export class GrentonObjectsPanel extends LitElement {
 
   private _columns() {
     return {
-      name: { title: "Nazwa (Grenton)", main: true, sortable: true, filterable: true, flex: 2 },
-      grenton_id: { title: "Grenton ID", sortable: true, filterable: true, hideable: true, width: "160px" },
-      clu: { title: "CLU", sortable: true, filterable: true, groupable: true, hideable: true, defaultHidden: true },
-      module: { title: "Moduł", sortable: true, filterable: true, groupable: true, hideable: true, defaultHidden: true },
-      type: { title: "Typ Grenton", sortable: true, filterable: true, groupable: true, hideable: true, width: "140px" },
-      entity_id: { title: "Encja HA", sortable: true, filterable: true, hideable: true, width: "260px",
-        template: (a: any, b: any) => this._entityCell(b ?? a) },
-      domain: { title: "Domena HA", filterable: true, groupable: true, hideable: true, defaultHidden: true },
-      update: { title: "Aktualizacja", sortable: true, filterable: true, hideable: true, width: "150px" },
-      updateCat: { title: "Tryb aktualizacji", filterable: true, groupable: true, hideable: true, defaultHidden: true },
-      status: { title: "Status", sortable: true, filterable: true, groupable: true, hideable: true, width: "220px",
-        template: (a: any, b: any) => this._statusCell(b ?? a) },
-      actions: { title: "Akcje", width: "64px", moveable: false, hideable: false,
-        template: (a: any, b: any) => this._actionsCell(b ?? a) },
+      name: {
+        title: "Nazwa (Grenton)",
+        main: true,
+        sortable: true,
+        filterable: true,
+        flex: 2,
+      },
+      grenton_id: {
+        title: "Grenton ID",
+        sortable: true,
+        filterable: true,
+        hideable: true,
+        width: "160px",
+      },
+      clu: {
+        title: "CLU",
+        sortable: true,
+        filterable: true,
+        groupable: true,
+        hideable: true,
+        defaultHidden: true,
+      },
+      module: {
+        title: "Moduł",
+        sortable: true,
+        filterable: true,
+        groupable: true,
+        hideable: true,
+        defaultHidden: true,
+      },
+      type: {
+        title: "Typ Grenton",
+        sortable: true,
+        filterable: true,
+        groupable: true,
+        hideable: true,
+        width: "140px",
+      },
+      entity_id: {
+        title: "Encja HA",
+        sortable: true,
+        filterable: true,
+        hideable: true,
+        width: "260px",
+        template: (a: any, b: any) => this._entityCell(b ?? a),
+      },
+      domain: {
+        title: "Domena HA",
+        filterable: true,
+        groupable: true,
+        hideable: true,
+        defaultHidden: true,
+      },
+      update: {
+        title: "Aktualizacja",
+        sortable: true,
+        filterable: true,
+        hideable: true,
+        width: "150px",
+      },
+      updateCat: {
+        title: "Tryb aktualizacji",
+        filterable: true,
+        groupable: true,
+        hideable: true,
+        defaultHidden: true,
+      },
+      status: {
+        title: "Status",
+        sortable: true,
+        filterable: true,
+        groupable: true,
+        hideable: true,
+        width: "220px",
+        template: (a: any, b: any) => this._statusCell(b ?? a),
+      },
+      actions: {
+        title: "Akcje",
+        width: "64px",
+        moveable: false,
+        hideable: false,
+        template: (a: any, b: any) => this._actionsCell(b ?? a),
+      },
     };
   }
 
   // Keep the "actions" column pinned last regardless of the column-config dialog
   // (HA's moveable:false would pin it left, so we re-pin it to the end).
   private _onColumnsChanged = (e: any) => {
-    let order: string[] | undefined = e.detail?.columnOrder ? [...e.detail.columnOrder] : undefined;
+    let order: string[] | undefined = e.detail?.columnOrder
+      ? [...e.detail.columnOrder]
+      : undefined;
     if (order) {
       order = order.filter((c) => c !== "actions");
       order.push("actions");
     }
     this._columnOrder = order;
     const hidden: string[] | undefined = e.detail?.hiddenColumns;
-    this._hiddenColumns = hidden ? hidden.filter((c) => c !== "actions") : hidden;
+    this._hiddenColumns = hidden
+      ? hidden.filter((c) => c !== "actions")
+      : hidden;
   };
 
   private _entityCell(row: ViewRow): TemplateResult {
-    if (!row.entity_id) return html`<span style="color:var(--secondary-text-color)">—</span>`;
+    if (!row.entity_id)
+      return html`<span style="color:var(--secondary-text-color)">—</span>`;
     const st = this.hass?.states?.[row.entity_id];
-    const color = st ? stateColorCss(st as any) ?? "var(--secondary-text-color)" : "var(--secondary-text-color)";
+    const color = st
+      ? (stateColorCss(st as any) ?? "var(--secondary-text-color)")
+      : "var(--secondary-text-color)";
     const stateStr = st ? this._formatState(st) : "niedostępna";
     return html`
       <span class="entity" @click=${() => this._moreInfo(row.entity_id)}>
-        ${st ? html`<ha-state-icon .stateObj=${st} style=${`color:${color}`}></ha-state-icon>` : nothing}
-        <span>${row.entity_id}<span style="color:var(--secondary-text-color)"> · ${stateStr}</span></span>
+        ${st
+          ? html`<ha-state-icon
+              .stateObj=${st}
+              style=${`color:${color}`}
+            ></ha-state-icon>`
+          : nothing}
+        <span
+          >${row.entity_id}<span style="color:var(--secondary-text-color)">
+            · ${stateStr}</span
+          ></span
+        >
       </span>
     `;
   }
 
   private _statusCell(row: ViewRow): TemplateResult {
-    const label = html`<ha-label dense .color=${SEV_HEX[row.sev]}>${row.status}</ha-label>`;
+    const label = html`<ha-label dense .color=${SEV_HEX[row.sev]}
+      >${row.status}</ha-label
+    >`;
     if (row.flag === "ok") return label; // nothing to explain
     return html`<span
       class="status-cell"
       title="Kliknij po szczegóły i wskazówki"
       @click=${() => this._openIssue(row)}
-    >${label}</span>`;
+      >${label}</span
+    >`;
   }
 
   // Context-tailored explanation for a row's status.
-  private _issueDetails(row: ViewRow): { sections: { h: string; body: string }[] } {
+  private _issueDetails(row: ViewRow): {
+    sections: { h: string; body: string }[];
+  } {
     const dom = row.domain && row.domain !== "—" ? row.domain : row.type;
     switch (row.flag) {
       case "orphan":
-        return { sections: [
-          { h: "Co jest nie tak", body: `Encja ${row.entity_id} wskazuje grenton_id „${row.grenton_id}", którego nie ma w tym projekcie OM.` },
-          { h: "Prawdopodobna przyczyna", body: "Obiekt został usunięty lub dostał nowy identyfikator w Object Managerze, albo encja w HA ma literówkę w grenton_id." },
-          { h: "Jak poprawić", body: "Sprawdź obiekt w OM i popraw grenton_id encji (ikona koła zębatego → Konfiguruj), albo usuń nieaktualną encję." },
-        ] };
+        return {
+          sections: [
+            {
+              h: "Co jest nie tak",
+              body: `Encja ${row.entity_id} wskazuje grenton_id „${row.grenton_id}", którego nie ma w tym projekcie OM.`,
+            },
+            {
+              h: "Prawdopodobna przyczyna",
+              body: "Obiekt został usunięty lub dostał nowy identyfikator w Object Managerze, albo encja w HA ma literówkę w grenton_id.",
+            },
+            {
+              h: "Jak poprawić",
+              body: "Sprawdź obiekt w OM i popraw grenton_id encji (ikona koła zębatego → Konfiguruj), albo usuń nieaktualną encję.",
+            },
+          ],
+        };
       case "push_wrong_object":
-        return { sections: [
-          { h: "Co jest nie tak", body: `Zdarzenie push aktualizuje tę encję (${row.grenton_id}) stanem INNEGO obiektu Grentona.` },
-          { h: "Czego oczekiwano", body: "Źródło w zdarzeniu powinno wskazywać ten sam obiekt, na który wskazuje encja." },
-          { h: "Jak poprawić", body: "W OM otwórz zdarzenie OnChange obiektu i popraw drugi argument HA_Integration_Queue_Prepare (źródło stanu) na właściwy obiekt." },
-        ] };
+        return {
+          sections: [
+            {
+              h: "Co jest nie tak",
+              body: `Zdarzenie push aktualizuje tę encję (${row.grenton_id}) stanem INNEGO obiektu Grentona.`,
+            },
+            {
+              h: "Czego oczekiwano",
+              body: "Źródło w zdarzeniu powinno wskazywać ten sam obiekt, na który wskazuje encja.",
+            },
+            {
+              h: "Jak poprawić",
+              body: "W OM otwórz zdarzenie OnChange obiektu i popraw drugi argument HA_Integration_Queue_Prepare (źródło stanu) na właściwy obiekt.",
+            },
+          ],
+        };
       case "push_bad_service":
-        return { sections: [
-          { h: "Co jest nie tak", body: `Push tej encji używa akcji, która nie pasuje do jej typu (${dom}).` },
-          { h: "Czego oczekiwano", body: `Dla typu „${dom}" akcja powinna być: ${DOMAIN_SERVICES[dom] || "właściwa dla typu encji"}.` },
-          { h: "Jak poprawić", body: "W OM zmień akcję w wywołaniu HA_Integration_Queue_Prepare (w zdarzeniu OnChange obiektu) na właściwą." },
-        ] };
+        return {
+          sections: [
+            {
+              h: "Co jest nie tak",
+              body: `Push tej encji używa akcji, która nie pasuje do jej typu (${dom}).`,
+            },
+            {
+              h: "Czego oczekiwano",
+              body: `Dla typu „${dom}" akcja powinna być: ${DOMAIN_SERVICES[dom] || "właściwa dla typu encji"}.`,
+            },
+            {
+              h: "Jak poprawić",
+              body: "W OM zmień akcję w wywołaniu HA_Integration_Queue_Prepare (w zdarzeniu OnChange obiektu) na właściwą.",
+            },
+          ],
+        };
       case "push_no_event":
-        return { sections: [
-          { h: "Co jest nie tak", body: "Encja jest w trybie push, ale w projekcie nie ma dla niej żadnego zdarzenia push (HA_Integration_Queue_Prepare)." },
-          { h: "Jak poprawić", body: "Wygeneruj zdarzenie push do .omp poniżej (do zweryfikowania w OM) albo w HA włącz automatyczne odświeżanie (polling)." },
-        ] };
+        return {
+          sections: [
+            {
+              h: "Co jest nie tak",
+              body: "Encja jest w trybie push, ale w projekcie nie ma dla niej żadnego zdarzenia push (HA_Integration_Queue_Prepare).",
+            },
+            {
+              h: "Jak poprawić",
+              body: "Wygeneruj zdarzenie push do .omp poniżej (do zweryfikowania w OM) albo w HA włącz automatyczne odświeżanie (polling).",
+            },
+          ],
+        };
       case "poll_redundant":
-        return { sections: [
-          { h: "Co jest nie tak", body: "Encja jest odpytywana (polling) i JEDNOCZEŚNIE ma zdarzenie push — aktualizuje się dwoma drogami." },
-          { h: "Jak poprawić", body: "Wyłącz automatyczne odświeżanie (auto-update) dla tej encji — wystarczy push. Ewentualnie usuń zdarzenie push w OM." },
-        ] };
+        return {
+          sections: [
+            {
+              h: "Co jest nie tak",
+              body: "Encja jest odpytywana (polling) i JEDNOCZEŚNIE ma zdarzenie push — aktualizuje się dwoma drogami.",
+            },
+            {
+              h: "Jak poprawić",
+              body: "Wyłącz automatyczne odświeżanie (auto-update) dla tej encji — wystarczy push. Ewentualnie usuń zdarzenie push w OM.",
+            },
+          ],
+        };
       case "unsupported":
-        return { sections: [
-          { h: "Co jest nie tak", body: `Integracja nie potrafi wystawić obiektu typu „${row.type}" jako encji HA (np. DALI_MASTER, kontener Satel).` },
-          { h: "Co zrobić", body: "Nic — ten obiekt po prostu nie ma odpowiednika w HA." },
-        ] };
+        return {
+          sections: [
+            {
+              h: "Co jest nie tak",
+              body: `Integracja nie potrafi wystawić obiektu typu „${row.type}" jako encji HA (np. DALI_MASTER, kontener Satel).`,
+            },
+            {
+              h: "Co zrobić",
+              body: "Nic — ten obiekt po prostu nie ma odpowiednika w HA.",
+            },
+          ],
+        };
       default: // not_in_ha
-        return { sections: [
-          { h: "Co jest nie tak", body: `Obiekt „${row.grenton_id}" (${row.type}) istnieje w projekcie Grentona, ale nie jest dodany do HA.` },
-          { h: "Jak dodać", body: `Wybierz typ encji i kliknij „Dodaj do HA" — encja powstanie z pollingiem (adres bramki jak w pozostałych obiektach). Domyślny typ to podpowiedź dla „${row.type}"; DOUT bywa światłem lub przełącznikiem — zmień, jeśli trzeba. Aktualizację przez push skonfigurujesz później w OM.` },
-        ] };
+        return {
+          sections: [
+            {
+              h: "Co jest nie tak",
+              body: `Obiekt „${row.grenton_id}" (${row.type}) istnieje w projekcie Grentona, ale nie jest dodany do HA.`,
+            },
+            {
+              h: "Jak dodać",
+              body: `Wybierz typ encji i kliknij „Dodaj do HA" — encja powstanie z pollingiem (adres bramki jak w pozostałych obiektach). Domyślny typ to podpowiedź dla „${row.type}"; DOUT bywa światłem lub przełącznikiem — zmień, jeśli trzeba. Aktualizację przez push skonfigurujesz później w OM.`,
+            },
+          ],
+        };
     }
   }
 
@@ -703,33 +1191,61 @@ export class GrentonObjectsPanel extends LitElement {
     if (!row) return nothing;
     const d = this._issueDetails(row);
     return html`
-      <ha-dialog open .headerTitle=${row.status} @closed=${() => (this._issue = undefined)}>
+      <ha-dialog
+        open
+        .headerTitle=${row.status}
+        @closed=${() => (this._issue = undefined)}
+      >
         <div class="issue">
-          ${d.sections.map((s) => html`<div class="issue-sec"><div class="issue-h">${s.h}</div><div>${s.body}</div></div>`)}
+          ${d.sections.map(
+            (s) =>
+              html`<div class="issue-sec">
+                <div class="issue-h">${s.h}</div>
+                <div>${s.body}</div>
+              </div>`,
+          )}
           ${row.flag === "poll_redundant" && row.entry_id
             ? html`<div class="issue-action">
-                <ha-button appearance="accent" size="small" @click=${() => this._fixDisablePolling(row)}>
+                <ha-button
+                  appearance="accent"
+                  size="small"
+                  @click=${() => this._fixDisablePolling(row)}
+                >
                   Napraw: wyłącz polling
                 </ha-button>
               </div>`
             : nothing}
           ${row.flag === "not_in_ha" && row.grenton_id
             ? html`<div class="issue-action">
-                <ha-button appearance="accent" size="small" @click=${() => this._openAdd(row)}>
+                <ha-button
+                  appearance="accent"
+                  size="small"
+                  @click=${() => this._openAdd(row)}
+                >
                   Dodaj do HA…
                 </ha-button>
               </div>`
             : nothing}
-          ${(row.flag === "push_bad_service" || row.flag === "push_wrong_object") && this._pushFixFor(row)
+          ${(row.flag === "push_bad_service" ||
+            row.flag === "push_wrong_object") &&
+          this._pushFixFor(row)
             ? this._pushFixAction(row, this._pushFixFor(row)!)
             : nothing}
           ${row.flag === "push_no_event" && row.entity_id
-            ? this._injectAction(row)
+            ? this._orphanRetargetFor(row)
+              ? this._orphanRetargetAction(row, this._orphanRetargetFor(row)!)
+              : this._injectAction(row)
             : nothing}
         </div>
         <div slot="footer" class="dialog-footer">
           ${row.entry_id
-            ? html`<ha-button appearance="plain" @click=${() => { this._issue = undefined; this._openConfig(row.entry_id); }}>
+            ? html`<ha-button
+                appearance="plain"
+                @click=${() => {
+                  this._issue = undefined;
+                  this._openConfig(row.entry_id);
+                }}
+              >
                 Konfiguruj encję
               </ha-button>`
             : nothing}
@@ -741,7 +1257,8 @@ export class GrentonObjectsPanel extends LitElement {
 
   private _openIssue(row: ViewRow) {
     const fix = this._pushFixFor(row);
-    this._svcChoice = fix?.kind === "service" ? fix.suggested_service ?? "" : "";
+    this._svcChoice =
+      fix?.kind === "service" ? (fix.suggested_service ?? "") : "";
     this._issue = row;
   }
 
@@ -749,13 +1266,27 @@ export class GrentonObjectsPanel extends LitElement {
 
   private _pushFixFor(row: ViewRow): PushFix | undefined {
     if (!row.entity_id) return undefined;
-    return this._report?.push_fixes?.find((f) => f.target_entity === row.entity_id);
+    return this._report?.push_fixes?.find(
+      (f) => f.target_entity === row.entity_id,
+    );
+  }
+
+  // Orphan retarget: an existing push points at an entity that doesn't exist
+  // in HA anymore, but its source object IS this row's entity — fixing the
+  // stale push is preferable to injecting a duplicate one.
+  private _orphanRetargetFor(row: ViewRow): PushFix | undefined {
+    if (!row.entity_id) return undefined;
+    return this._report?.push_fixes?.find(
+      (f) =>
+        f.kind === "retarget" && f.orphan && f.new_entity === row.entity_id,
+    );
   }
 
   private _pushFixAction(row: ViewRow, fix: PushFix): TemplateResult {
     if (fix.kind === "service") {
       const services = fix.valid_services ?? [];
-      const chosen = this._svcChoice || fix.suggested_service || services[0] || "";
+      const chosen =
+        this._svcChoice || fix.suggested_service || services[0] || "";
       return html`
         <div class="issue-action add-action">
           <ha-select
@@ -766,9 +1297,15 @@ export class GrentonObjectsPanel extends LitElement {
             @selected=${(e: any) => (this._svcChoice = e.target.value)}
             @closed=${(e: Event) => e.stopPropagation()}
           >
-            ${services.map((s) => html`<ha-list-item .value=${s}>${s}</ha-list-item>`)}
+            ${services.map(
+              (s) => html`<ha-list-item .value=${s}>${s}</ha-list-item>`,
+            )}
           </ha-select>
-          <ha-button appearance="accent" size="small" @click=${() => this._stageServiceFix(row, fix)}>
+          <ha-button
+            appearance="accent"
+            size="small"
+            @click=${() => this._stageServiceFix(row, fix)}
+          >
             Dodaj poprawkę do .omp
           </ha-button>
         </div>
@@ -777,8 +1314,16 @@ export class GrentonObjectsPanel extends LitElement {
     return html`
       <div class="issue-action">
         <div class="issue-h">Proponowana poprawka w .omp</div>
-        <div>Cel push zostanie przekierowany na encję pasującą do źródła: <b>${fix.new_entity}</b>.</div>
-        <ha-button appearance="accent" size="small" @click=${() => this._stageRetargetFix(row, fix)} style="margin-top:6px">
+        <div>
+          Cel push zostanie przekierowany na encję pasującą do źródła:
+          <b>${fix.new_entity}</b>.
+        </div>
+        <ha-button
+          appearance="accent"
+          size="small"
+          @click=${() => this._stageRetargetFix(row, fix)}
+          style="margin-top:6px"
+        >
           Dodaj poprawkę do .omp
         </ha-button>
       </div>
@@ -806,20 +1351,60 @@ export class GrentonObjectsPanel extends LitElement {
     });
   }
 
+  private _orphanRetargetAction(row: ViewRow, fix: PushFix): TemplateResult {
+    return html`
+      <div class="issue-action">
+        <div class="issue-h">Proponowana poprawka w .omp</div>
+        <div>
+          W projekcie istnieje już zdarzenie push dla tego obiektu, kierujące na
+          nieistniejącą encję
+          <b>${fix.target_entity}</b>. Zamiast dodawać nowe zdarzenie,
+          przekieruj istniejące na <b>${row.entity_id}</b>.
+        </div>
+        <ha-button
+          appearance="accent"
+          size="small"
+          @click=${() => this._stageOrphanRetarget(row, fix)}
+          style="margin-top:6px"
+        >
+          Napraw entity_id w istniejącym zdarzeniu push
+        </ha-button>
+      </div>
+    `;
+  }
+
+  private _stageOrphanRetarget(row: ViewRow, fix: PushFix) {
+    this._stageFix({
+      target_entity: fix.target_entity,
+      kind: "retarget",
+      title: `Cel push — ${row.entity_id}`,
+      detail: `push „${fix.target_entity}" → „${fix.new_entity}"`,
+      new_entity: fix.new_entity,
+    });
+  }
+
   private _injectAction(row: ViewRow): TemplateResult {
     if (!pushInjectable(row.type)) {
       return html`
         <div class="issue-action">
-          Automatyczne wygenerowanie zdarzenia push dla typu „${row.type}" nie jest jeszcze wspierane —
-          skonfiguruj push w OM ręcznie.
+          Automatyczne wygenerowanie zdarzenia push dla typu „${row.type}" nie
+          jest jeszcze wspierane — skonfiguruj push w OM ręcznie.
         </div>
       `;
     }
     return html`
       <div class="issue-action">
         <div class="issue-h">Proponowana poprawka w .omp</div>
-        <div>Wygeneruje zdarzenie push (Grenton→HA) w obiekcie <b>${row.grenton_id}</b>, kierujące stan na <b>${row.entity_id}</b>.</div>
-        <ha-button appearance="accent" size="small" @click=${() => this._stageInject(row)} style="margin-top:6px">
+        <div>
+          Wygeneruje zdarzenie push (Grenton→HA) w obiekcie
+          <b>${row.grenton_id}</b>, kierujące stan na <b>${row.entity_id}</b>.
+        </div>
+        <ha-button
+          appearance="accent"
+          size="small"
+          @click=${() => this._stageInject(row)}
+          style="margin-top:6px"
+        >
           Dodaj zdarzenie push do .omp
         </ha-button>
       </div>
@@ -827,8 +1412,11 @@ export class GrentonObjectsPanel extends LitElement {
   }
 
   private _stageInject(row: ViewRow) {
-    const objId = row.grenton_id.includes("->") ? row.grenton_id.split("->")[1] : row.grenton_id;
-    const cluSerial = row.clu && row.clu !== "—" ? row.clu : row.grenton_id.split("->")[0];
+    const objId = row.grenton_id.includes("->")
+      ? row.grenton_id.split("->")[1]
+      : row.grenton_id;
+    const cluSerial =
+      row.clu && row.clu !== "—" ? row.clu : row.grenton_id.split("->")[0];
     this._stageFix({
       target_entity: row.entity_id,
       kind: "inject",
@@ -848,7 +1436,7 @@ export class GrentonObjectsPanel extends LitElement {
 
   private _stageFix(fix: PendingFix) {
     const rest = this._pendingFixes.filter(
-      (x) => !(x.target_entity === fix.target_entity && x.kind === fix.kind)
+      (x) => !(x.target_entity === fix.target_entity && x.kind === fix.kind),
     );
     this._pendingFixes = [...rest, fix];
     this._issue = undefined;
@@ -862,10 +1450,21 @@ export class GrentonObjectsPanel extends LitElement {
       <div class="pending-bar">
         <ha-icon icon="mdi:file-document-edit-outline"></ha-icon>
         <button class="pending-info" @click=${() => (this._pendingOpen = true)}>
-          ${n} ${n === 1 ? "poprawka" : "poprawek"} do pliku .omp — kliknij, aby przejrzeć
+          ${n} ${n === 1 ? "poprawka" : "poprawek"} do pliku .omp — kliknij, aby
+          przejrzeć
         </button>
-        <ha-button appearance="accent" size="small" @click=${this._downloadRewrite}>Pobierz poprawiony .omp</ha-button>
-        <ha-button appearance="plain" size="small" @click=${this._discardPending}>Odrzuć</ha-button>
+        <ha-button
+          appearance="accent"
+          size="small"
+          @click=${this._downloadRewrite}
+          >Pobierz poprawiony .omp</ha-button
+        >
+        <ha-button
+          appearance="plain"
+          size="small"
+          @click=${this._discardPending}
+          >Odrzuć</ha-button
+        >
       </div>
     `;
   }
@@ -873,27 +1472,41 @@ export class GrentonObjectsPanel extends LitElement {
   private _pendingDialog() {
     if (!this._pendingOpen) return nothing;
     return html`
-      <ha-dialog open .headerTitle=${"Poprawki do pliku .omp"} @closed=${() => (this._pendingOpen = false)}>
+      <ha-dialog
+        open
+        .headerTitle=${"Poprawki do pliku .omp"}
+        @closed=${() => (this._pendingOpen = false)}
+      >
         <div class="pending">
           <ha-alert alert-type="warning">
-            Zmiany dotyczą pliku projektu Grentona. Pobierz kopię i <b>zweryfikuj w Object Managerze</b>
+            Zmiany dotyczą pliku projektu Grentona. Pobierz kopię i
+            <b>zweryfikuj w Object Managerze</b>
             przed wgraniem do CLU — Twój oryginalny plik nie jest modyfikowany.
           </ha-alert>
           <ha-list>
             ${this._pendingFixes.map(
-              (f) => html`<ha-list-item twoline hasMeta>
-                <span>${f.title}</span>
-                <span slot="secondary">${f.detail}</span>
-                <ha-icon-button slot="meta" .label=${"Usuń poprawkę"} @click=${() => this._removePending(f)}>
-                  <ha-icon icon="mdi:close"></ha-icon>
-                </ha-icon-button>
-              </ha-list-item>`
+              (f) =>
+                html`<ha-list-item twoline hasMeta>
+                  <span>${f.title}</span>
+                  <span slot="secondary">${f.detail}</span>
+                  <ha-icon-button
+                    slot="meta"
+                    .label=${"Usuń poprawkę"}
+                    @click=${() => this._removePending(f)}
+                  >
+                    <ha-icon icon="mdi:close"></ha-icon>
+                  </ha-icon-button>
+                </ha-list-item>`,
             )}
           </ha-list>
         </div>
         <div slot="footer" class="dialog-footer">
-          <ha-button appearance="plain" @click=${this._discardPending}>Odrzuć wszystkie</ha-button>
-          <ha-button appearance="accent" @click=${this._downloadRewrite}>Pobierz poprawiony .omp</ha-button>
+          <ha-button appearance="plain" @click=${this._discardPending}
+            >Odrzuć wszystkie</ha-button
+          >
+          <ha-button appearance="accent" @click=${this._downloadRewrite}
+            >Pobierz poprawiony .omp</ha-button
+          >
         </div>
       </ha-dialog>
     `;
@@ -901,7 +1514,7 @@ export class GrentonObjectsPanel extends LitElement {
 
   private _removePending(fix: PendingFix) {
     this._pendingFixes = this._pendingFixes.filter(
-      (x) => !(x.target_entity === fix.target_entity && x.kind === fix.kind)
+      (x) => !(x.target_entity === fix.target_entity && x.kind === fix.kind),
     );
     if (!this._pendingFixes.length) this._pendingOpen = false;
   }
@@ -935,16 +1548,24 @@ export class GrentonObjectsPanel extends LitElement {
         injections,
       });
       this._download(res.omp_base64, "ha_integration_poprawiony.omp");
-      const skipped = res.skipped?.length ? ` (pominięto ${res.skipped.length})` : "";
-      this._toast(`Pobrano poprawiony .omp — ${res.applied.length} zmian${skipped}. Zweryfikuj w Object Managerze.`);
+      const skipped = res.skipped?.length
+        ? ` (pominięto ${res.skipped.length})`
+        : "";
+      this._toast(
+        `Pobrano poprawiony .omp — ${res.applied.length} zmian${skipped}. Zweryfikuj w Object Managerze.`,
+      );
     } catch (e: any) {
-      this._toast(`Nie udało się przygotować pliku: ${e?.message || e?.code || "błąd"}`);
+      this._toast(
+        `Nie udało się przygotować pliku: ${e?.message || e?.code || "błąd"}`,
+      );
     }
   };
 
   private _download(base64: string, filename: string) {
     const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
-    const url = URL.createObjectURL(new Blob([bytes], { type: "application/octet-stream" }));
+    const url = URL.createObjectURL(
+      new Blob([bytes], { type: "application/octet-stream" }),
+    );
     const link = document.createElement("a");
     link.href = url;
     link.download = filename;
@@ -964,7 +1585,9 @@ export class GrentonObjectsPanel extends LitElement {
         auto_update: false,
       });
       await this._reanalyze(); // recompute report → redundancy disappears from summary + table
-      this._toast(`Wyłączono polling dla ${row.entity_id} — aktualizacja tylko przez push.`);
+      this._toast(
+        `Wyłączono polling dla ${row.entity_id} — aktualizacja tylko przez push.`,
+      );
     } catch (e: any) {
       this._toast(`Nie udało się: ${e?.message || e?.code || "błąd"}`);
     }
@@ -1002,18 +1625,49 @@ export class GrentonObjectsPanel extends LitElement {
     const allowed = allowedDeviceTypes(omType);
     const schema: any[] = [
       { name: "name", required: true, selector: { text: {} } },
-      { name: "device_type", required: true,
-        selector: { select: { mode: "dropdown", options: allowed.map((d) => ({ value: d, label: DEVICE_TYPE_LABELS[d] })) } } },
+      {
+        name: "device_type",
+        required: true,
+        selector: {
+          select: {
+            mode: "dropdown",
+            options: allowed.map((d) => ({
+              value: d,
+              label: DEVICE_TYPE_LABELS[d],
+            })),
+          },
+        },
+      },
       ...(GRENTON_TYPE_OPTIONS[deviceType]
-        ? [{ name: "grenton_type", required: true,
-            selector: { select: { mode: "dropdown", options: GRENTON_TYPE_OPTIONS[deviceType].map((g) => ({ value: g, label: g })) } } }]
+        ? [
+            {
+              name: "grenton_type",
+              required: true,
+              selector: {
+                select: {
+                  mode: "dropdown",
+                  options: GRENTON_TYPE_OPTIONS[deviceType].map((g) => ({
+                    value: g,
+                    label: g,
+                  })),
+                },
+              },
+            },
+          ]
         : []),
       { name: "api_endpoint", required: true, selector: { text: {} } },
       { name: "grenton_id", required: true, selector: { text: {} } },
     ];
     if (deviceType === "cover") {
-      schema.push({ name: "device_class",
-        selector: { select: { mode: "dropdown", options: COVER_CLASSES.map((c) => ({ value: c, label: c })) } } });
+      schema.push({
+        name: "device_class",
+        selector: {
+          select: {
+            mode: "dropdown",
+            options: COVER_CLASSES.map((c) => ({ value: c, label: c })),
+          },
+        },
+      });
     }
     if (deviceType === "switch" || deviceType === "cover") {
       schema.push({ name: "reversed", selector: { boolean: {} } });
@@ -1021,23 +1675,33 @@ export class GrentonObjectsPanel extends LitElement {
     if (deviceType !== "climate") {
       schema.push({ name: "auto_update", selector: { boolean: {} } });
     }
-    schema.push({ name: "update_interval",
-      selector: { number: { min: 1, max: 3600, mode: "box", unit_of_measurement: "s" } } });
+    schema.push({
+      name: "update_interval",
+      selector: {
+        number: { min: 1, max: 3600, mode: "box", unit_of_measurement: "s" },
+      },
+    });
     return schema;
   }
 
-  private _addComputeLabel = (s: { name: string }) => ADD_FIELD_LABELS[s.name] ?? s.name;
+  private _addComputeLabel = (s: { name: string }) =>
+    ADD_FIELD_LABELS[s.name] ?? s.name;
 
   private _addDialog() {
     const row = this._addRow;
     if (!row) return nothing;
-    const deviceType = this._addData.device_type || allowedDeviceTypes(row.type)[0];
+    const deviceType =
+      this._addData.device_type || allowedDeviceTypes(row.type)[0];
     return html`
-      <ha-dialog open .headerTitle=${"Dodaj obiekt do HA"} @closed=${() => (this._addRow = undefined)}>
+      <ha-dialog
+        open
+        .headerTitle=${"Dodaj obiekt do HA"}
+        @closed=${() => (this._addRow = undefined)}
+      >
         <div class="add-dialog">
           <p class="add-hint">
-            Obiekt „${row.grenton_id}" (${row.type}) zostanie dodany jako encja HA.
-            Sprawdź i w razie potrzeby popraw poniższe pola.
+            Obiekt „${row.grenton_id}" (${row.type}) zostanie dodany jako encja
+            HA. Sprawdź i w razie potrzeby popraw poniższe pola.
           </p>
           <ha-form
             .hass=${this.hass}
@@ -1046,11 +1710,17 @@ export class GrentonObjectsPanel extends LitElement {
             .computeLabel=${this._addComputeLabel}
             @value-changed=${this._onAddFormChanged}
           ></ha-form>
-          <p class="add-hint">Aktualizację przez push (Grenton→HA) skonfigurujesz później w OM.</p>
+          <p class="add-hint">
+            Aktualizację przez push (Grenton→HA) skonfigurujesz później w OM.
+          </p>
         </div>
         <div slot="footer" class="dialog-footer">
           <ha-button appearance="plain" data-dialog="close">Anuluj</ha-button>
-          <ha-button appearance="accent" @click=${() => this._confirmAddObject(row)}>Dodaj do HA</ha-button>
+          <ha-button
+            appearance="accent"
+            @click=${() => this._confirmAddObject(row)}
+            >Dodaj do HA</ha-button
+          >
         </div>
       </ha-dialog>
     `;
@@ -1062,8 +1732,12 @@ export class GrentonObjectsPanel extends LitElement {
     // When the entity type changes, re-derive the type-specific defaults so the
     // proposal stays sensible (e.g. grenton_type valid for the new type).
     if (v.device_type !== prev.device_type) {
-      v.grenton_type = inferGrentonType(v.device_type, this._addRow?.type || "");
-      if (v.device_type === "cover" && !v.device_class) v.device_class = "shutter";
+      v.grenton_type = inferGrentonType(
+        v.device_type,
+        this._addRow?.type || "",
+      );
+      if (v.device_type === "cover" && !v.device_class)
+        v.device_class = "shutter";
     }
     this._addData = v;
   };
@@ -1088,17 +1762,27 @@ export class GrentonObjectsPanel extends LitElement {
         update_interval: Number(d.update_interval) || 30,
         ...(d.grenton_type ? { grenton_type: d.grenton_type } : {}),
         ...(d.device_class ? { device_class: d.device_class } : {}),
-        ...(d.device_type === "switch" || d.device_type === "cover" ? { reversed: !!d.reversed } : {}),
+        ...(d.device_type === "switch" || d.device_type === "cover"
+          ? { reversed: !!d.reversed }
+          : {}),
       });
       await this._reanalyze(); // recompute report → object now shows as present in HA
-      this._toast(`Dodano „${d.name || grentonId}" do HA jako ${d.device_type}.`);
+      this._toast(
+        `Dodano „${d.name || grentonId}" do HA jako ${d.device_type}.`,
+      );
     } catch (e: any) {
       this._toast(`Nie udało się dodać: ${e?.message || e?.code || "błąd"}`);
     }
   }
 
   private _toast(message: string) {
-    this.dispatchEvent(new CustomEvent("hass-notification", { detail: { message }, bubbles: true, composed: true }));
+    this.dispatchEvent(
+      new CustomEvent("hass-notification", {
+        detail: { message },
+        bubbles: true,
+        composed: true,
+      }),
+    );
   }
 
   private _actionsCell(row: ViewRow): TemplateResult | typeof nothing {
@@ -1111,7 +1795,10 @@ export class GrentonObjectsPanel extends LitElement {
     ></ha-icon>`;
   }
 
-  private _formatState(st: { state: string; attributes: Record<string, any> }): string {
+  private _formatState(st: {
+    state: string;
+    attributes: Record<string, any>;
+  }): string {
     const unit = st.attributes?.unit_of_measurement;
     return unit ? `${st.state} ${unit}` : st.state;
   }
@@ -1126,16 +1813,36 @@ export class GrentonObjectsPanel extends LitElement {
     const r = this._report!;
     const counts = (field: keyof ViewRow) => {
       const c: Record<string, number> = {};
-      for (const row of this._allViewRows()) c[row[field] as string] = (c[row[field] as string] || 0) + 1;
+      for (const row of this._allViewRows())
+        c[row[field] as string] = (c[row[field] as string] || 0) + 1;
       return c;
     };
-    const typeItems = r.type_summary.map((t) => ({ key: t.type, label: `${t.type} (${t.count})${t.supported ? "" : " · nieobsł."}` }));
+    const typeItems = r.type_summary.map((t) => ({
+      key: t.type,
+      label: `${t.type} (${t.count})${t.supported ? "" : " · nieobsł."}`,
+    }));
     const uc = counts("updateCat");
     const sc = counts("statusCat");
     return html`
       ${this._filterGroup("Typ Grenton", typeItems, this._typeSel, "type")}
-      ${this._filterGroup("Aktualizacja", UPDATE_CATS.map((c) => ({ key: c.key, label: `${c.label} (${uc[c.key] || 0})` })), this._updSel, "upd")}
-      ${this._filterGroup("Status", STATUS_CATS.map((c) => ({ key: c.key, label: `${c.label} (${sc[c.key] || 0})` })), this._statSel, "stat")}
+      ${this._filterGroup(
+        "Aktualizacja",
+        UPDATE_CATS.map((c) => ({
+          key: c.key,
+          label: `${c.label} (${uc[c.key] || 0})`,
+        })),
+        this._updSel,
+        "upd",
+      )}
+      ${this._filterGroup(
+        "Status",
+        STATUS_CATS.map((c) => ({
+          key: c.key,
+          label: `${c.label} (${sc[c.key] || 0})`,
+        })),
+        this._statSel,
+        "stat",
+      )}
     `;
   }
 
@@ -1144,10 +1851,23 @@ export class GrentonObjectsPanel extends LitElement {
     return merged.map((r): ViewRow => {
       const st = statusInfo(r);
       return {
-        id: "", name: "", om_name: "", grenton_type: "", grenton_id: "", clu: "", module: "", type: r.om_type || r.device_type || "—",
-        entity_id: "", entry_id: "", domain: "", update: "",
+        id: "",
+        name: "",
+        om_name: "",
+        grenton_type: "",
+        grenton_id: "",
+        clu: "",
+        module: "",
+        type: r.om_type || r.device_type || "—",
+        entity_id: "",
+        entry_id: "",
+        domain: "",
+        update: "",
         updateCat: r.in_ha ? (r.mode ?? "brak") : "brak",
-        status: st.label, sev: st.sev, statusCat: st.cat, flag: "",
+        status: st.label,
+        sev: st.sev,
+        statusCat: st.cat,
+        flag: "",
       };
     });
   }
@@ -1156,7 +1876,7 @@ export class GrentonObjectsPanel extends LitElement {
     label: string,
     items: { key: string; label: string }[],
     sel: Set<string>,
-    which: "type" | "upd" | "stat"
+    which: "type" | "upd" | "stat",
   ) {
     return html`
       <ha-expansion-panel slot="filter-pane" outlined .expanded=${sel.size > 0}>
@@ -1167,24 +1887,46 @@ export class GrentonObjectsPanel extends LitElement {
                 <ha-icon
                   class="filter-clear"
                   icon="mdi:filter-variant-remove"
-                  @click=${(e: Event) => { e.stopPropagation(); this._setSel(which, new Set()); }}
+                  @click=${(e: Event) => {
+                    e.stopPropagation();
+                    this._setSel(which, new Set());
+                  }}
                 ></ha-icon>`
             : nothing}
         </div>
-        <ha-list multi @selected=${(e: any) => this._onListSelected(e, which, items)}>
+        <ha-list
+          multi
+          @selected=${(e: any) => this._onListSelected(e, which, items)}
+        >
           ${items.map(
-            (it) => html`<ha-check-list-item .value=${it.key} .selected=${sel.has(it.key)}>${it.label}</ha-check-list-item>`
+            (it) =>
+              html`<ha-check-list-item
+                .value=${it.key}
+                .selected=${sel.has(it.key)}
+                >${it.label}</ha-check-list-item
+              >`,
           )}
         </ha-list>
       </ha-expansion-panel>
     `;
   }
 
-  private _onListSelected(e: any, which: "type" | "upd" | "stat", items: { key: string }[]) {
+  private _onListSelected(
+    e: any,
+    which: "type" | "upd" | "stat",
+    items: { key: string }[],
+  ) {
     const idx = e?.detail?.index;
-    const indices: number[] = idx instanceof Set ? Array.from(idx) : typeof idx === "number" ? [idx] : [];
+    const indices: number[] =
+      idx instanceof Set
+        ? Array.from(idx)
+        : typeof idx === "number"
+          ? [idx]
+          : [];
     const next = new Set<string>();
-    indices.forEach((i) => { if (items[i]) next.add(items[i].key); });
+    indices.forEach((i) => {
+      if (items[i]) next.add(items[i].key);
+    });
     this._setSel(which, next);
   }
 
@@ -1202,13 +1944,19 @@ export class GrentonObjectsPanel extends LitElement {
 
   private _defaultTypeSel(): Set<string> {
     const ts = this._report?.type_summary ?? [];
-    return new Set(ts.filter((t: TypeSummaryEntry) => t.supported && t.type !== "DIN").map((t) => t.type));
+    return new Set(
+      ts
+        .filter((t: TypeSummaryEntry) => t.supported && t.type !== "DIN")
+        .map((t) => t.type),
+    );
   }
 
   // ─── actions ─────────────────────────────────────────────────────────
 
   private _pickFile = () => {
-    this.renderRoot.querySelector<HTMLInputElement>('input[type="file"]')?.click();
+    this.renderRoot
+      .querySelector<HTMLInputElement>('input[type="file"]')
+      ?.click();
   };
 
   private _onFileInput = (e: Event) => {
@@ -1243,27 +1991,38 @@ export class GrentonObjectsPanel extends LitElement {
         omp_base64: this._lastOmp,
       });
       this._report = report;
-      this._entityIds = new Set(report.merged.map((r) => r.entity_id).filter((x): x is string => !!x));
+      this._entityIds = new Set(
+        report.merged.map((r) => r.entity_id).filter((x): x is string => !!x),
+      );
       if (resetFilters) {
         this._typeSel = this._defaultTypeSel();
         this._updSel = new Set();
         this._statSel = new Set();
       }
     } catch (err: any) {
-      this._error = err?.message || err?.code || "Nie udało się odczytać pliku .omp.";
+      this._error =
+        err?.message || err?.code || "Nie udało się odczytać pliku .omp.";
     } finally {
       this._busy = false;
     }
   }
 
   private _moreInfo(entityId: string) {
-    this.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId }, bubbles: true, composed: true }));
+    this.dispatchEvent(
+      new CustomEvent("hass-more-info", {
+        detail: { entityId },
+        bubbles: true,
+        composed: true,
+      }),
+    );
   }
 
   private _openConfig(entryId: string) {
     const path = `/config/integrations/integration/${DOMAIN}#config_entry=${entryId}`;
     window.history.pushState(null, "", path);
-    this.dispatchEvent(new CustomEvent("location-changed", { bubbles: true, composed: true }));
+    this.dispatchEvent(
+      new CustomEvent("location-changed", { bubbles: true, composed: true }),
+    );
   }
 }
 

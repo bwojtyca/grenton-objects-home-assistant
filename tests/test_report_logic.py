@@ -250,3 +250,66 @@ def test_build_report_merged_flags_and_fields():
 def test_build_report_is_json_serializable():
     import json
     json.dumps(_scenario())  # must not raise
+
+
+# ─── orphan-target retarget fixes ─────────────────────────────────────────
+
+def _orphan_scenario(**overrides):
+    """A push points to a stale entity id; the same source object has a fresh HA entity."""
+    om_objects = [
+        {"clu": "CLU1", "obj_id": "DAL1", "grenton_id": "CLU1->DAL1", "name": "Kuchnia", "type": "DALI_GEAR_DT8"},
+    ]
+    push_events = [
+        {"ha_entity": "light.old_kuchnia", "service": "set_brightness", "src_obj": "Kuchnia"},
+    ]
+    ha_objects = [
+        {"entity_id": "light.dali_kuchnia", "name": "Kuchnia", "device_type": "light",
+         "grenton_id": "CLU1->DAL1", "auto_update": False},
+    ]
+    ha_objects[0].update(overrides.get("ha_override", {}))
+    return report.build_report(om_objects, push_events, ha_objects)
+
+
+def test_orphan_target_generates_retarget_fix():
+    result = _orphan_scenario()
+    assert result["push_orphan_targets"] == ["light.old_kuchnia"]
+    fixes = [f for f in result["push_fixes"] if f.get("orphan")]
+    assert len(fixes) == 1
+    fix = fixes[0]
+    assert fix["kind"] == "retarget"
+    assert fix["target_entity"] == "light.old_kuchnia"
+    assert fix["new_entity"] == "light.dali_kuchnia"
+    assert fix["source_grenton_id"] == "CLU1->DAL1"
+
+
+def test_orphan_target_without_ha_entity_is_not_fixable():
+    # Source object has no HA counterpart → no retarget suggestion.
+    om_objects = [
+        {"clu": "CLU1", "obj_id": "DOU1", "grenton_id": "CLU1->DOU1", "name": "Foo", "type": "DOUT"},
+    ]
+    push_events = [{"ha_entity": "light.ghost", "service": "set_state", "src_obj": "Foo"}]
+    ha_objects = []  # no HA entity for CLU1->DOU1
+    result = report.build_report(om_objects, push_events, ha_objects)
+    assert result["push_orphan_targets"] == ["light.ghost"]
+    assert not any(f.get("orphan") for f in result["push_fixes"])
+
+
+def test_orphan_target_deduped_against_object_mismatch_fix():
+    # If push_object_mismatch already generated a retarget for this pair, don't duplicate.
+    om_objects = [
+        {"clu": "CLU1", "obj_id": "DOU1", "grenton_id": "CLU1->DOU1", "name": "Foo", "type": "DOUT"},
+    ]
+    push_events = [
+        {"ha_entity": "light.wrongtarget", "service": "set_state", "src_obj": "Foo"},
+    ]
+    ha_objects = [
+        {"entity_id": "light.wrongtarget", "name": "Wrong", "device_type": "light",
+         "grenton_id": "CLU1->OTHER", "auto_update": False},
+        {"entity_id": "light.foo", "name": "Foo", "device_type": "light",
+         "grenton_id": "CLU1->DOU1", "auto_update": False},
+    ]
+    result = report.build_report(om_objects, push_events, ha_objects)
+    retargets = [f for f in result["push_fixes"] if f["kind"] == "retarget"]
+    assert len(retargets) == 1
+    assert retargets[0].get("orphan") is not True  # came from push_object_mismatch, not orphan path
+

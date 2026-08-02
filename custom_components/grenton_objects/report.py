@@ -410,6 +410,30 @@ def build_report(
             "source_grenton_id": m["source_grenton_id"],
             "entity_grenton_id": m["entity_grenton_id"],
         })
+    # Orphan-target retargets: an existing push points at a HA entity that no
+    # longer exists (renamed/removed), but its source Grenton object has a HA
+    # entity — so we can rewrite the push to that entity instead of injecting a
+    # brand new event (which would leave the stale push behind).
+    seen_retargets = {(f["target_entity"], f.get("new_entity")) for f in push_fixes if f["kind"] == "retarget"}
+    for orphan in push_orphan_targets:
+        for event in push_events:
+            if event["ha_entity"] != orphan:
+                continue
+            src = om_by_name.get(event["src_obj"])
+            if not src:
+                continue
+            new_entity = entity_by_object_id.get(_object_id(src["grenton_id"]))
+            if not new_entity or (orphan, new_entity) in seen_retargets:
+                continue
+            push_fixes.append({
+                "kind": "retarget",
+                "target_entity": orphan,
+                "new_entity": new_entity,
+                "source_grenton_id": src["grenton_id"],
+                "entity_grenton_id": None,
+                "orphan": True,
+            })
+            seen_retargets.add((orphan, new_entity))
 
     ha_norm_ids = {_normalize_grenton_id(r["grenton_id"]) for r in rows}
     not_in_ha = [
